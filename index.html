@@ -1727,12 +1727,12 @@
     }
 
     /* ═══════════════════════════════════════════════════
-   STAR / FLAG COLUMNS
+   STAR / FAVOURITE COLUMN
 ═══════════════════════════════════════════════════ */
-    /* Desktop col layout: # | title | artist | albumartist | plays | last played | skips | last skipped | date added | ★ | ⚑ | time | dl */
+    /* Desktop col layout: # | title | artist | albumartist | plays | last played | skips | last skipped | date added | ★ | time | dl */
     .sr,
     #col-hdrs {
-      grid-template-columns: 32px 1fr 13% 11% 44px 80px 44px 80px 80px 26px 26px 48px 22px;
+      grid-template-columns: 32px 1fr 13% 11% 44px 80px 44px 80px 80px 26px 48px 22px;
     }
 
     .s-flag-col {
@@ -1765,21 +1765,7 @@
       opacity: .8;
     }
 
-    /* Flag */
-    .flag-btn svg {
-      color: var(--text3);
-    }
 
-    .flag-btn.on svg {
-      color: var(--red);
-      fill: var(--red);
-    }
-
-    .flag-btn:hover svg {
-      color: var(--red);
-    }
-
-    /* Album art thumbnail */
     .art-thumb {
       width: 28px;
       height: 28px;
@@ -1891,13 +1877,10 @@
     }
 
     /* ═══════════════════════════════════════════════════
-   MOBILE: star/flag always visible
+   MOBILE: star always visible
 ═══════════════════════════════════════════════════ */
     @media (max-width: 700px) {
-
-      /* Mobile col layout reuses sdl-mob slot for star */
-      .star-btn svg,
-      .flag-btn svg {
+      .star-btn svg {
         width: 13px;
         height: 13px;
       }
@@ -2090,8 +2073,6 @@
         <span id="bulk-count">0 selected</span>
         <button class="bulk-btn" id="bulk-star">★ Star</button>
         <button class="bulk-btn" id="bulk-unstar">★ Unstar</button>
-        <button class="bulk-btn danger" id="bulk-flag">⚑ Flag</button>
-        <button class="bulk-btn" id="bulk-unflag">⚑ Unflag</button>
         <button class="bulk-btn" id="bulk-cache">↓ Cache</button>
         <button class="bulk-btn" id="bulk-playlist">+ Playlist…</button>
         <span class="bulk-dismiss" id="bulk-dismiss">×</span>
@@ -2119,12 +2100,6 @@
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path
               d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-          </svg>
-        </div>
-        <div class="ch" data-col="flag" title="Flagged">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-            <line x1="4" y1="22" x2="4" y2="15" />
           </svg>
         </div>
         <div class="ch"></div>
@@ -2327,11 +2302,6 @@
           <path
             d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
         </svg></button>
-      <button class="np-cb" id="np-flag" title="Flag for removal"><svg width="20" height="20" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-          <line x1="4" y1="22" x2="4" y2="15" />
-        </svg></button>
       <button class="np-cb" id="np-show-in-songs" title="Show in Songs"><svg width="18" height="18" viewBox="0 0 24 24"
           fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8" />
@@ -2358,7 +2328,6 @@
     <div class="ci" id="ctx-next">Play Next</div>
     <div class="cs"></div>
     <div class="ci" id="ctx-star">♡ Love</div>
-    <div class="ci" id="ctx-flag">⚑ Flag for removal</div>
     <div class="cs"></div>
     <div class="ci" id="ctx-history" style="font-size:11px;color:var(--text3);cursor:default;pointer-events:none">Never
       played</div>
@@ -2444,7 +2413,7 @@
     let playing = false, shuf = false, rep = 0;
     let sortCol = 'title', sortDir = 1, view = 'all', selId = null, ctxId = null, sq = '';
     let curUrl = null, online = navigator.onLine;
-    // Song meta: { [id]: { starred, flagged, playCount, lastPlayed, albumArtUrl } }
+    // Song meta: { [id]: { starred, playCount, lastPlayed, albumArtUrl } }
     let songMeta = {};
     // Art: fetched per-song on play, never bulk
     // Live session
@@ -2517,7 +2486,6 @@
 
     function getMeta(id) { return songMeta[String(id)] || {}; }
     function isStarred(id) { return !!getMeta(id).starred; }
-    function isFlagged(id) { return !!getMeta(id).flagged; }
     function playCount(id) { return getMeta(id).playCount || 0; }
     function lastPlayed(id) { return getMeta(id).lastPlayed || 0; }
 
@@ -2526,12 +2494,6 @@
       await pushMeta({ [id]: { starred: val } });
       renderList(); updNPActions();
       toast(val ? '♥ Loved' : 'Removed from loved');
-    }
-    async function toggleFlag(id) {
-      const val = !isFlagged(id);
-      await pushMeta({ [id]: { flagged: val } });
-      renderList(); updNPActions();
-      toast(val ? '⚑ Flagged for removal' : 'Unflagged');
     }
     async function recordPlay(id) {
       const m = getMeta(id);
@@ -2912,7 +2874,6 @@ function setMS(song) {
       if (view === 'cached') s = songs.filter(x => cachedIds.has(x.id));
       else if (view === 'all') s = [...songs];
       else if (view === 'starred') s = songs.filter(x => isStarred(x.id));
-      else if (view === 'flagged') s = songs.filter(x => isFlagged(x.id));
       else if (view === 'never-played') s = songs.filter(x => !playCount(x.id));
       else if (view === 'most-played') { s = [...songs].filter(x => playCount(x.id) > 0).sort((a, b) => playCount(b.id) - playCount(a.id)).slice(0, 100); }
       else if (view === 'recently-played') { s = [...songs].filter(x => lastPlayed(x.id) > 0).sort((a, b) => lastPlayed(b.id) - lastPlayed(a.id)).slice(0, 50); }
@@ -2932,7 +2893,6 @@ function setMS(song) {
         let va, vb;
         if (sortCol === 'duration') { va = a.duration || 0; vb = b.duration || 0; }
         else if (sortCol === 'star') { va = isStarred(a.id) ? 0 : 1; vb = isStarred(b.id) ? 0 : 1; }
-        else if (sortCol === 'flag') { va = isFlagged(a.id) ? 0 : 1; vb = isFlagged(b.id) ? 0 : 1; }
         else if (sortCol === 'playcount') { va = playCount(a.id); vb = playCount(b.id); }
         else if (sortCol === 'lastplayed') { va = lastPlayed(a.id); vb = lastPlayed(b.id); }
         else if (sortCol === 'skipcount') { va = skipCount(a.id); vb = skipCount(b.id); }
@@ -2964,7 +2924,6 @@ function setMS(song) {
           'no-lib-cfg': ["Connect to your NAS", "Configure NAS URL and API key in Settings, then hit Sync."],
           'no-lib': ["Library empty", "Hit Sync to fetch music from your NAS."],
           'starred': ["No loved songs", "Tap the heart on any song to mark it as loved."],
-          'flagged': ["No flagged songs", "Flag songs you want to remove, then delete them manually from the NAS."],
           'cached': ["No cached songs", "Tap the download icon on any song to cache it."],
           'never-played': ["Everything played", "You've played every song in your library."],
           'most-played': ["No plays yet", "Your most played songs will appear here."],
@@ -2987,15 +2946,14 @@ function setMS(song) {
 
       s.forEach((song, i) => {
         const isNow = cs && song.id === cs.id, isCached = cachedIds.has(song.id);
-        const starred = isStarred(song.id), flagged = isFlagged(song.id);
+        const starred = isStarred(song.id);
         const m = getMeta(song.id);
         const row = document.createElement('div');
-        row.className = 'sr' + (isNow ? ' now' : '') + (isNow && !playing ? ' paused' : '') + (flagged ? ' flagged-row' : '') + (bulkSel.has(song.id) ? ' bulk-sel' : '');
+        row.className = 'sr' + (isNow ? ' now' : '') + (isNow && !playing ? ' paused' : '') + (bulkSel.has(song.id) ? ' bulk-sel' : '');
         row.dataset.id = song.id;
 
         const HEART_RED = '#e5143a';
         const starSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${starred ? HEART_RED : 'none'}" stroke="${starred ? HEART_RED : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
-        const flagSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${flagged ? 'var(--red)' : 'none'}" stroke="${flagged ? 'var(--red)' : 'currentColor'}" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`;
         const artHtml = m.albumArtUrl
           ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.style.display='none'">`
           : `<div class="art-placeholder"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>`;
@@ -3024,7 +2982,6 @@ function setMS(song) {
         <div class="sd">${fmtDate(lastSkipped(song.id))}</div>
         <div class="sd">${fmtDate(getMeta(song.id).dateAdded || song.modified * 1000)}</div>
         <div class="s-flag-col star-btn${starred ? ' on' : ''}" data-id="${song.id}">${starSvg}</div>
-        <div class="s-flag-col flag-btn${flagged ? ' on' : ''}" data-id="${song.id}">${flagSvg}</div>
         <div class="sd">${fmt(song.duration)}</div>
         <div class="sdl${isCached ? ' cached' : ''}">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -3034,10 +2991,8 @@ function setMS(song) {
           row.querySelector('.sdl').addEventListener('click', e => { e.stopPropagation(); cachedIds.has(song.id) ? uncache(song.id) : cacheSong(song.id); });
         }
 
-        // Star / flag click handlers
+        // Star click handler
         row.querySelector('.star-btn').addEventListener('click', e => { e.stopPropagation(); toggleStar(song.id); });
-        const flagBtn = row.querySelector('.flag-btn');
-        if (flagBtn) flagBtn.addEventListener('click', e => { e.stopPropagation(); toggleFlag(song.id); });
 
         row.addEventListener('dblclick', () => { qi = queue.indexOf(song.id); playSong(song.id); });
         row.addEventListener('click', e => {
@@ -3135,7 +3090,6 @@ function setMS(song) {
       nav.appendChild(smartLabel);
       const now = Date.now();
       const starCount = songs.filter(s => isStarred(s.id)).length;
-      const flagCount = songs.filter(s => isFlagged(s.id)).length;
       const neverCount = songs.filter(s => !playCount(s.id)).length;
       const recentCutoff = now - (30 * 24 * 60 * 60 * 1000);
       const recentCount = songs.filter(s => (getMeta(s.id).dateAdded || 0) > recentCutoff).length;
@@ -3188,14 +3142,6 @@ function setMS(song) {
         el.className = 'ni' + (active ? ' active' : ''); el.dataset.view = 'starred';
         el.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="${active ? '#e5143a' : 'none'}" stroke="${active ? '#e5143a' : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Loved<span class="badge">${starCount}</span>`;
         el.addEventListener('click', () => { switchView('starred'); closeSidebar(); });
-        nav.appendChild(el);
-      }
-      if (flagCount > 0 || view === 'flagged') {
-        const active = view === 'flagged';
-        const el = document.createElement('div');
-        el.className = 'ni' + (active ? ' active' : ''); el.dataset.view = 'flagged';
-        el.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="${active ? 'var(--red)' : 'none'}" stroke="${active ? 'var(--red)' : 'currentColor'}" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>Flagged<span class="badge">${flagCount}</span>`;
-        el.addEventListener('click', () => { switchView('flagged'); closeSidebar(); });
         nav.appendChild(el);
       }
       // User playlists
@@ -3339,10 +3285,6 @@ function setMS(song) {
       bulkAction(id => pushMeta({ [id]: { starred: true } })));
     document.getElementById('bulk-unstar').addEventListener('click', () =>
       bulkAction(id => pushMeta({ [id]: { starred: false } })));
-    document.getElementById('bulk-flag').addEventListener('click', () =>
-      bulkAction(id => pushMeta({ [id]: { flagged: true } })));
-    document.getElementById('bulk-unflag').addEventListener('click', () =>
-      bulkAction(id => pushMeta({ [id]: { flagged: false } })));
     document.getElementById('bulk-cache').addEventListener('click', async () => {
       const ids = [...bulkSel];
       exitBulkMode();
@@ -3369,7 +3311,6 @@ function setMS(song) {
       document.getElementById('ctx-play').style.display = 'none';
       document.getElementById('ctx-next').style.display = 'none';
       document.getElementById('ctx-star').style.display = 'none';
-      document.getElementById('ctx-flag').style.display = 'none';
       document.getElementById('ctx-cache').style.display = 'none';
       document.getElementById('ctx-history').style.display = 'none';
       document.getElementById('ctx-uncache').style.display = 'none';
@@ -3379,7 +3320,7 @@ function setMS(song) {
         for (const id of bulkSel) await addToPl(el.dataset.plid, id);
         exitBulkMode(); hideCtx();
         // Restore ctx items
-        ['ctx-play', 'ctx-next', 'ctx-star', 'ctx-flag', 'ctx-cache', 'ctx-history'].forEach(id => {
+        ['ctx-play', 'ctx-next', 'ctx-star', 'ctx-cache', 'ctx-history'].forEach(id => {
           document.getElementById(id).style.display = '';
         });
       }));
@@ -3392,12 +3333,11 @@ function setMS(song) {
     function showCtx(x, y, id) {
       ctxId = id;
       const menu = document.getElementById('ctx'), pi = document.getElementById('ctx-pls'), ps = document.getElementById('ctx-pls-sep');
-      const isCached = cachedIds.has(id), starred = isStarred(id), flagged = isFlagged(id);
+      const isCached = cachedIds.has(id), starred = isStarred(id);
       const m = getMeta(id);
       document.getElementById('ctx-cache').textContent = isCached ? '✓ Cached (remove)' : '↓ Cache for Offline';
       document.getElementById('ctx-uncache').style.display = isCached ? '' : 'none';
       document.getElementById('ctx-star').textContent = starred ? '♥ Unlove' : '♡ Love';
-      document.getElementById('ctx-flag').textContent = flagged ? '⚑ Unflag' : '⚑ Flag for removal';
       // Play history info
       const pc = playCount(id), lp = lastPlayed(id), sc = skipCount(id);
       const playStr = pc ? `Played ${pc}×` : 'Never played';
@@ -3415,7 +3355,6 @@ function setMS(song) {
     document.getElementById('ctx-play').addEventListener('click', () => { if (ctxId) { qi = queue.indexOf(ctxId); playSong(ctxId); } hideCtx(); });
     document.getElementById('ctx-next').addEventListener('click', () => { if (ctxId) queue.splice(qi + 1, 0, ctxId); hideCtx(); });
     document.getElementById('ctx-star').addEventListener('click', () => { if (ctxId) toggleStar(ctxId); hideCtx(); });
-    document.getElementById('ctx-flag').addEventListener('click', () => { if (ctxId) toggleFlag(ctxId); hideCtx(); });
     document.getElementById('ctx-cache').addEventListener('click', () => { if (ctxId) { cachedIds.has(ctxId) ? uncache(ctxId) : cacheSong(ctxId); } hideCtx(); });
     document.getElementById('ctx-uncache').addEventListener('click', () => { if (ctxId) uncache(ctxId); hideCtx(); });
     document.addEventListener('click', hideCtx);
@@ -3598,14 +3537,11 @@ function setMS(song) {
     // ── NP PANEL ACTIONS ─────────────────────────────────────────────────────────
     function updNPActions() {
       const cs = curSong(); if (!cs) return;
-      const loved = isStarred(cs.id), flagged = isFlagged(cs.id);
+      const loved = isStarred(cs.id);
       const starBtn = document.getElementById('np-star');
       if (starBtn) { starBtn.style.color = loved ? '#e5143a' : ''; starBtn.querySelector('svg').setAttribute('fill', loved ? '#e5143a' : 'none'); starBtn.querySelector('svg').setAttribute('stroke', loved ? '#e5143a' : 'currentColor'); }
-      const flagBtn = document.getElementById('np-flag');
-      if (flagBtn) { flagBtn.style.color = flagged ? 'var(--red)' : ''; flagBtn.querySelector('svg').setAttribute('fill', flagged ? 'var(--red)' : 'none'); }
     }
     document.getElementById('np-star').addEventListener('click', () => { const cs = curSong(); if (cs) toggleStar(cs.id); });
-    document.getElementById('np-flag').addEventListener('click', () => { const cs = curSong(); if (cs) toggleFlag(cs.id); });
     document.getElementById('np-show-in-songs').addEventListener('click', () => showInLibrary());
 
     // ── INIT ──────────────────────────────────────────────────────────────────────
