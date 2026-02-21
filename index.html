@@ -391,6 +391,8 @@
       align-items: center;
       gap: 3px;
       transition: color .1s;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
     .ch:hover {
@@ -1412,6 +1414,12 @@
         bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)) + 10px);
       }
 
+      /* Status bar — more compact on mobile */
+      #status-bar {
+        font-size: 9px;
+        padding: 3px 8px;
+      }
+
       /* Full-screen now playing panel */
       #nowplaying-panel {
         position: fixed;
@@ -1890,9 +1898,67 @@
     }
 
 
-    /* ═══════════════════════════════════════════════════
-   PLAYLIST DRAG-REORDER
-═══════════════════════════════════════════════════ */
+    /* Up Next action strip */
+    #upnext-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 12px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text3);
+      flex-shrink: 0;
+    }
+
+    /* iTunes-style status bar */
+    #status-bar {
+      flex-shrink: 0;
+      padding: 4px 12px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: .04em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    /* Go-to arrows on now-playing row */
+    .sa-goto, .sb-goto {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .sa-goto .sa-txt, .sb-goto .sa-txt {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .goto-arrow {
+      flex-shrink: 0;
+      opacity: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      padding-left: 4px;
+      transition: opacity .12s;
+      line-height: 1;
+    }
+    .sa-goto:hover .goto-arrow,
+    .sb-goto:hover .goto-arrow {
+      opacity: 1;
+    }
+    .sa-goto:hover .sa-txt,
+    .sb-goto:hover .sa-txt {
+      color: var(--accent);
+    }
     .sr.drag-over-top    { border-top: 2px solid var(--accent) !important; }
     .sr.drag-over-bottom { border-bottom: 2px solid var(--accent) !important; }
     .sr.dragging         { opacity: .4; }
@@ -2120,6 +2186,11 @@
         <span class="lb-dismiss" id="live-banner-dismiss">×</span>
       </div>
       <div id="col-hdrs"><!-- populated by renderColHdrs() --></div>
+      <!-- Up Next action bar — shown only in upnext view -->
+      <div id="upnext-bar" style="display:none">
+        <span id="upnext-bar-info"></span>
+        <button class="tb" id="upnext-clear-btn" style="font-size:11px;padding:2px 10px;opacity:.7">Clear</button>
+      </div>
       <div id="lw">
         <div id="sl"></div>
         <div id="empty">
@@ -2132,6 +2203,11 @@
           <p id="empty-p">Configure your NAS URL and API key in Settings, then hit Sync.</p>
           <button class="tb accent" id="empty-set" style="margin-top:10px">Open Settings</button>
         </div>
+      </div>
+      <!-- Status bar — iTunes-style song count / duration / size -->
+      <div id="status-bar">
+        <span id="status-bar-txt"></span>
+        <button id="reset-cache-btn" class="tb" style="display:none;font-size:10px;padding:1px 8px;opacity:.6;color:var(--danger,#e5143a);border-color:currentColor">Reset Cache</button>
       </div>
     </div>
 
@@ -2348,6 +2424,9 @@
     <div class="cs"></div>
     <div class="ci" id="ctx-star">♡ Love</div>
     <div class="cs"></div>
+    <div class="ci" id="ctx-goto-artist" style="display:none">Go to Artist</div>
+    <div class="ci" id="ctx-goto-album" style="display:none">Go to Album</div>
+    <div class="cs" id="ctx-goto-sep" style="display:none"></div>
     <div class="ci" id="ctx-history" style="font-size:11px;color:var(--text3);cursor:default;pointer-events:none">Never
       played</div>
     <div class="cs"></div>
@@ -3025,11 +3104,82 @@ function setMS(song) {
       toast('Done caching!');
     }
     async function loadCachedIds() { const all = await iall('blobs'); cachedIds = new Set(all.map(b => b.id)); updCounts(); }
+
+    // ── RESET CACHE ───────────────────────────────────────────────────────────────
+    async function resetCache() {
+      const ok = confirm(`Reset all cached data?\n\nThis will:\n• Delete all ${cachedIds.size} offline-cached songs\n• Clear library manifest, meta, and playlists from local storage\n• Your NAS connection settings will be kept\n\nThe page will reload after reset.`);
+      if (!ok) return;
+      toast('Resetting cache…');
+      try {
+        // Wipe all blobs from IndexedDB
+        const all = await iall('blobs');
+        for (const b of all) await idel('blobs', b.id);
+        cachedIds = new Set();
+        // Clear localStorage except jb-cfg
+        const cfg = localStorage.getItem('jb-cfg');
+        localStorage.clear();
+        if (cfg) localStorage.setItem('jb-cfg', cfg);
+        console.log('[Cache] Reset complete — reloading');
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        toast('Reset failed: ' + e.message);
+        console.error('[Cache] Reset error:', e);
+      }
+    }
+    document.getElementById('reset-cache-btn').addEventListener('click', resetCache);
     function updCounts() {
       document.getElementById('cache-ct').textContent = cachedIds.size;
       document.getElementById('lib-ct').textContent = songs.length;
       document.getElementById('upnext-ct').textContent = queue.length;
     }
+
+    // ── STATUS BAR (iTunes-style) ─────────────────────────────────────────────────
+    function fmtDuration(totalSecs) {
+      if (!totalSecs) return '0 seconds';
+      const w = totalSecs / 604800;
+      if (w >= 1)  return w.toFixed(1) + ' weeks';
+      const d = totalSecs / 86400;
+      if (d >= 1)  return d.toFixed(1) + ' days';
+      const h = totalSecs / 3600;
+      if (h >= 1)  return h.toFixed(1) + ' hours';
+      const m = totalSecs / 60;
+      if (m >= 1)  return m.toFixed(0) + ' minutes';
+      return Math.round(totalSecs) + ' seconds';
+    }
+    function fmtSize(totalBytes) {
+      if (!totalBytes) return '';
+      const gb = totalBytes / 1e9;
+      if (gb >= 1) return gb.toFixed(1) + ' GB';
+      const mb = totalBytes / 1e6;
+      return mb.toFixed(0) + ' MB';
+    }
+    function updateStatusBar(songList) {
+      const count = songList.length;
+      const secs  = songList.reduce((a, s) => a + (s.duration || 0), 0);
+      const bytes = songList.reduce((a, s) => a + (s.size || 0), 0);
+      const parts = [`${count} song${count !== 1 ? 's' : ''}`, fmtDuration(secs)];
+      if (bytes) parts.push(fmtSize(bytes));
+      document.getElementById('status-bar-txt').textContent = parts.join(' · ');
+      document.getElementById('reset-cache-btn').style.display = view === 'cached' ? '' : 'none';
+    }
+
+    // ── UP NEXT BAR ───────────────────────────────────────────────────────────────
+    function updateUpNextBar() {
+      const bar = document.getElementById('upnext-bar');
+      if (view !== 'upnext') { bar.style.display = 'none'; return; }
+      bar.style.display = 'flex';
+      const remaining = queue.length - qi - 1;
+      document.getElementById('upnext-bar-info').textContent =
+        queue.length ? `${queue.length} song${queue.length !== 1 ? 's' : ''} · ${remaining} remaining` : '';
+    }
+
+    // Wire the static Clear button
+    document.getElementById('upnext-clear-btn').addEventListener('click', () => {
+      if (!playingId) { queue = []; qi = -1; }
+      else { queue = [playingId]; qi = 0; }
+      clearPrefetch(); updCounts(); updateUpNextBar(); renderList();
+      console.log('[Queue] Cleared');
+    });
 
     // ── SORT / FILTER / QUEUE ─────────────────────────────────────────────────────
     // Default sort for 'all' / 'cached': Artist → Album → Track Number
@@ -3122,23 +3272,23 @@ function setMS(song) {
 
     function getViewCols(v) {
       const isPlaylist = pls.some(p => String(p.id) === String(v));
-      const numCol   = { col: 'num',       label: '#',          width: '32px',  align: 'right' };
-      const titleCol = { col: 'title',     label: 'Title',      width: '1fr'  };
-      const artistCol= { col: 'artist',    label: 'Artist',     width: '15%'  };
-      const albumCol = { col: 'album',     label: 'Album',      width: '14%'  };
-      const timeCol  = { col: 'duration',  label: 'Time',       width: '48px', align: 'right' };
-      const starCol  = { col: 'star',      svgLabel: HEART_SVG, width: '26px', align: 'center', noSort: false };
-      const cacheCol = { col: '_cache',    svgLabel: CHECK_SVG, width: '22px', align: 'center', noSort: true };
-      const removeCol= { col: '_remove',   svgLabel: '',        width: '22px', align: 'center', noSort: true };
-      const playsCol = { col: 'playcount',  label: 'Plays',    width: '48px', align: 'right' };
-      const skipsCol = { col: 'skipcount',  label: 'Skips',    width: '48px', align: 'right' };
-      const lpCol    = { col: 'lastplayed', label: 'Last Played', width: '80px' };
-      const daCol    = { col: 'dateadded',  label: 'Date Added',  width: '80px' };
+      const removeCol= { col: '_remove',    svgLabel: '',              width: '20px',  align: 'center', noSort: true };
+      const numCol   = { col: 'num',        label: '#',                width: '30px',  align: 'right' };
+      const titleCol = { col: 'title',      label: 'Title',            width: '28%'  };
+      const artistCol= { col: 'artist',     label: 'Artist',           width: '18%'  };
+      const albumCol = { col: 'album',      label: 'Album',            width: '18%'  };
+      const timeCol  = { col: 'duration',   label: 'Time',             width: '46px', align: 'right' };
+      const starCol  = { col: 'star',       svgLabel: HEART_SVG,       width: '26px', align: 'center', noSort: false };
+      const cacheCol = { col: '_cache',     svgLabel: CHECK_SVG,       width: '22px', align: 'center', noSort: true };
+      const playsCol = { col: 'playcount',  label: 'Plays',            width: '50px', align: 'right' };
+      const skipsCol = { col: 'skipcount',  label: 'Skips',            width: '50px', align: 'right' };
+      const lpCol    = { col: 'lastplayed', label: 'Last Played',      width: '100px' };
+      const daCol    = { col: 'dateadded',  label: 'Date Added',       width: '100px' };
 
       if (v === 'all' || v === 'cached')
         return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
       if (v === 'upnext')
-        return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol, removeCol];
+        return [removeCol, numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
       if (v === 'recently-added')
         return [numCol, titleCol, timeCol, artistCol, daCol,    starCol, cacheCol];
       if (v === 'recently-played')
@@ -3175,21 +3325,6 @@ function setMS(song) {
         const sortable = !c.noSort && c.col !== 'num' && c.col !== '_cache' && c.col !== '_remove';
         return `<div class="${cls}" data-col="${c.col}" ${sortable ? '' : 'style="cursor:default"'}>${lbl}</div>`;
       }).join('');
-      // For Up Next, append a Clear button after the headers
-      if (v === 'upnext' && queue.length) {
-        const clearBtn = document.createElement('button');
-        clearBtn.className = 'tb';
-        clearBtn.style.cssText = 'margin-left:auto;font-size:11px;padding:2px 8px;opacity:.6';
-        clearBtn.textContent = 'Clear';
-        clearBtn.title = 'Clear Up Next queue';
-        clearBtn.addEventListener('click', () => {
-          if (!playingId) { queue = []; qi = -1; }
-          else { queue = [playingId]; qi = 0; } // keep only currently playing song
-          clearPrefetch(); updCounts(); renderList();
-          console.log('[Queue] Cleared');
-        });
-        hdrs.appendChild(clearBtn);
-      }
       // Wire sort clicks
       hdrs.querySelectorAll('.ch[data-col]').forEach(el => {
         const col = el.dataset.col;
@@ -3237,7 +3372,10 @@ function setMS(song) {
         const [etitle, edesc] = EMPTY_STATES[ekey];
         document.getElementById('empty-h').textContent = etitle;
         document.getElementById('empty-p').textContent = edesc;
-        empty.classList.add('show'); return;
+        empty.classList.add('show');
+        updateStatusBar([]);
+        updateUpNextBar();
+        return;
       }
       empty.classList.remove('show');
       const frag = document.createDocumentFragment();
@@ -3289,8 +3427,18 @@ function setMS(song) {
                 <span class="st" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(song.title || 'Unknown')}</span>
               </div>`;
             }
-            if (c.col === 'artist') return `<div class="sa">${esc(song.artist || '')}</div>`;
-            if (c.col === 'album')  return `<div class="sb">${esc(song.album || '')}</div>`;
+            if (c.col === 'artist') {
+              if (isNow && song.artist) {
+                return `<div class="sa sa-goto" data-goto="artist"><span class="sa-txt">${esc(song.artist)}</span><span class="goto-arrow" title="Go to Artist">›</span></div>`;
+              }
+              return `<div class="sa">${esc(song.artist || '')}</div>`;
+            }
+            if (c.col === 'album') {
+              if (isNow && song.album) {
+                return `<div class="sb sb-goto" data-goto="album"><span class="sa-txt">${esc(song.album)}</span><span class="goto-arrow" title="Go to Album">›</span></div>`;
+              }
+              return `<div class="sb">${esc(song.album || '')}</div>`;
+            }
             if (c.col === 'duration') return `<div class="sd">${fmt(song.duration)}</div>`;
             if (c.col === 'playcount') return `<div class="sd">${playCount(song.id) || ''}</div>`;
             if (c.col === 'skipcount') return `<div class="sd">${skipCount(song.id) || ''}</div>`;
@@ -3302,6 +3450,14 @@ function setMS(song) {
             return `<div></div>`;
           });
           row.innerHTML = cells.join('');
+
+          // Go-to arrows on now-playing row (desktop)
+          if (isNow) {
+            const artistGoto = row.querySelector('.sa-goto');
+            if (artistGoto) artistGoto.addEventListener('click', e => { e.stopPropagation(); goToArtist(song.artist); });
+            const albumGoto = row.querySelector('.sb-goto');
+            if (albumGoto) albumGoto.addEventListener('click', e => { e.stopPropagation(); goToAlbum(song.album, song.artist); });
+          }
 
           // Cache click
           const cacheEl = row.querySelector('.sdl');
@@ -3434,6 +3590,8 @@ function setMS(song) {
         frag.appendChild(row);
       });
       list.innerHTML = ''; list.appendChild(frag);
+      updateStatusBar(s);
+      updateUpNextBar();
     }
     function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
@@ -3684,6 +3842,7 @@ function setMS(song) {
       const menu = document.getElementById('ctx'), pi = document.getElementById('ctx-pls'), ps = document.getElementById('ctx-pls-sep');
       const isCached = cachedIds.has(id), starred = isStarred(id);
       const m = getMeta(id);
+      const song = songs.find(s => s.id === id);
       document.getElementById('ctx-cache').textContent = isCached ? '✓ Cached (remove)' : '↓ Cache for Offline';
       document.getElementById('ctx-uncache').style.display = isCached ? '' : 'none';
       document.getElementById('ctx-star').textContent = starred ? '♥ Unlove' : '♡ Love';
@@ -3692,6 +3851,17 @@ function setMS(song) {
       const playStr = pc ? `Played ${pc}×` : 'Never played';
       const skipStr = sc ? ` · Skipped ${sc}×` : '';
       document.getElementById('ctx-history').textContent = playStr + skipStr + (lp ? ` · ${fmtDate(lp)}` : '');
+      // Go-to Artist / Album — show for any song (useful on mobile); on desktop only used for now-playing row
+      const hasArtist = !!(song && song.artist);
+      const hasAlbum  = !!(song && song.album);
+      const goArtistEl = document.getElementById('ctx-goto-artist');
+      const goAlbumEl  = document.getElementById('ctx-goto-album');
+      const goSepEl    = document.getElementById('ctx-goto-sep');
+      goArtistEl.style.display = hasArtist ? '' : 'none';
+      goAlbumEl.style.display  = hasAlbum  ? '' : 'none';
+      goSepEl.style.display    = (hasArtist || hasAlbum) ? '' : 'none';
+      if (hasArtist) goArtistEl.textContent = `Go to Artist: ${song.artist}`;
+      if (hasAlbum)  goAlbumEl.textContent  = `Go to Album: ${song.album}`;
       pi.innerHTML = pls.map(pl => `<div class="ci" data-plid="${pl.id}">Add to "${esc(pl.name)}"</div>`).join('');
       ps.style.display = pls.length ? '' : 'none';
       pi.querySelectorAll('.ci').forEach(el => el.addEventListener('click', () => { addToPl(el.dataset.plid, ctxId); hideCtx(); }));
@@ -3702,11 +3872,46 @@ function setMS(song) {
     }
     function hideCtx() { document.getElementById('ctx').classList.remove('show'); }
     document.getElementById('ctx-play').addEventListener('click', () => { if (ctxId) { playSong(ctxId, true, true); } hideCtx(); });
-    document.getElementById('ctx-next').addEventListener('click', () => { if (ctxId) queue.splice(qi + 1, 0, ctxId); hideCtx(); });
+    document.getElementById('ctx-next').addEventListener('click', () => {
+      if (ctxId) {
+        if (!queue.length) freezeQueue(null);
+        queue.splice(qi + 1, 0, ctxId);
+        updCounts();
+        const song = songs.find(s => s.id === ctxId);
+        toast(`Playing next: ${song ? song.title : ''}`)
+      }
+      hideCtx();
+    });
     document.getElementById('ctx-star').addEventListener('click', () => { if (ctxId) toggleStar(ctxId); hideCtx(); });
     document.getElementById('ctx-cache').addEventListener('click', () => { if (ctxId) { cachedIds.has(ctxId) ? uncache(ctxId) : cacheSong(ctxId); } hideCtx(); });
     document.getElementById('ctx-uncache').addEventListener('click', () => { if (ctxId) uncache(ctxId); hideCtx(); });
+    document.getElementById('ctx-goto-artist').addEventListener('click', () => { if (ctxId) { const s = songs.find(x => x.id === ctxId); if (s) goToArtist(s.artist); } hideCtx(); });
+    document.getElementById('ctx-goto-album').addEventListener('click',  () => { if (ctxId) { const s = songs.find(x => x.id === ctxId); if (s) goToAlbum(s.album, s.artist); } hideCtx(); });
     document.addEventListener('click', hideCtx);
+
+    // ── GO TO ARTIST / ALBUM ──────────────────────────────────────────────────────
+    function goToArtist(artist) {
+      if (!artist) return;
+      // Switch to Songs view, set search to artist name
+      view = 'all';
+      document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === 'all'));
+      sq = artist;
+      const searchEl = document.getElementById('search');
+      if (searchEl) searchEl.value = artist;
+      renderList(); renderSB();
+      toast(`Showing songs by ${artist}`);
+    }
+    function goToAlbum(album, artist) {
+      if (!album) return;
+      // Switch to Songs view, filter by album (use "Album - Artist" to be specific if needed)
+      view = 'all';
+      document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === 'all'));
+      sq = album;
+      const searchEl = document.getElementById('search');
+      if (searchEl) searchEl.value = album;
+      renderList(); renderSB();
+      toast(`Showing album: ${album}`);
+    }
 
     // Sort headers are wired dynamically by renderColHdrs() on each render
 
