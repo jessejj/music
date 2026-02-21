@@ -2366,6 +2366,8 @@
   <!-- TOAST -->
   <div id="toast"></div>
   <audio id="aud" preload="auto"></audio>
+  <!-- Silent 1-second loop to hold iOS audio session open across track gaps -->
+  <audio id="keepalive" loop preload="auto"></audio>
 
   <script>
     'use strict';
@@ -2413,6 +2415,9 @@
     let playing = false, shuf = false, rep = 0;
     let sortCol = 'title', sortDir = 1, view = 'all', selId = null, ctxId = null, sq = '';
     let curUrl = null, online = navigator.onLine;
+    // iOS background audio: silent keepalive + next-track prefetch
+    let _kaUnlocked = false;  // audio session unlocked by user gesture
+    let _prefetchId = null, _prefetchSrc = null, _prefetchUrl = null; // next-track lookahead
     // Song meta: { [id]: { starred, playCount, lastPlayed, albumArtUrl } }
     let songMeta = {};
     // Art: fetched per-song on play, never bulk
@@ -2423,7 +2428,57 @@
     const aud = document.getElementById('aud');
     aud.volume = 0.85;
 
-    // ── API ───────────────────────────────────────────────────────────────────────
+    // ── iOS AUDIO SESSION KEEPALIVE ───────────────────────────────────────────────
+    // A 1-second silent MP3 (base64) looped to hold the iOS audio session open
+    // between tracks, preventing WKWebView from suspending audio on lock screen.
+    const SILENT_MP3 = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADwADMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM////////////////////////////////////////////////////////////////AAAAAExhdmYAAAAAAAAAAAAAAAAAAAAAACQAAAAAAAAAAAPA5WsuAAAAAAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIADWg+M9MIAARF5QgkABMGAAMCIgQAYABAIiBhEQiIQFECJEABEAAAH/AAAB4AA=';
+    const kaEl = document.getElementById('keepalive');
+    kaEl.src = SILENT_MP3;
+    kaEl.volume = 0.001; // effectively silent
+
+    function unlockAudioSession() {
+      if (_kaUnlocked) return;
+      _kaUnlocked = true;
+      kaEl.play().catch(() => { _kaUnlocked = false; });
+    }
+
+    // Start keepalive when main audio plays; stop only when explicitly paused by user
+    aud.addEventListener('play', () => {
+      unlockAudioSession();
+      if (kaEl.paused) kaEl.play().catch(() => {});
+    });
+    // Keep looping silently even when aud pauses — stops only on explicit user pause
+    // (handled in the pause listener below via a flag)
+
+    // ── NEXT-TRACK PREFETCH ───────────────────────────────────────────────────────
+    // Resolves the next song's src URL ~25s before the current track ends,
+    // so playNext() has zero async work to do at the track boundary.
+    async function prefetchNext() {
+      const nextQi = shuf
+        ? null  // can't predict shuffle; skip prefetch
+        : (rep === 2 ? qi : (qi + 1) % queue.length);
+      if (nextQi === null || nextQi === qi) return;
+      const nextId = queue[nextQi];
+      if (!nextId || nextId === _prefetchId) return; // already prefetched
+      _prefetchId = nextId;
+      _prefetchSrc = null;
+      _prefetchUrl = null;
+      try {
+        const song = songs.find(s => s.id === nextId); if (!song) return;
+        const cached = await iget('blobs', nextId);
+        if (cached?.blob) {
+          _prefetchUrl = URL.createObjectURL(cached.blob);
+          _prefetchSrc = _prefetchUrl;
+        } else if (online && cfg.url) {
+          _prefetchSrc = await streamUrl(song);
+        }
+      } catch { _prefetchId = null; }
+    }
+
+    function clearPrefetch() {
+      if (_prefetchUrl) { URL.revokeObjectURL(_prefetchUrl); _prefetchUrl = null; }
+      _prefetchId = null; _prefetchSrc = null;
+    }
     function apiBase() { return (cfg.url || '').replace(/\/$/, ''); }
     function aurl(action, p = {}) { return apiBase() + '/api.php?' + new URLSearchParams({ action, ...p }); }
     async function afetch(action, p = {}) {
@@ -2680,16 +2735,26 @@
     // ── PLAYBACK ──────────────────────────────────────────────────────────────────
     async function playSong(id, auto = true) {
       const song = songs.find(s => s.id === id); if (!song) return;
-      if (curUrl) { URL.revokeObjectURL(curUrl); curUrl = null; }
+      // Revoke any previous blob URL
+      if (curUrl && curUrl !== _prefetchUrl) { URL.revokeObjectURL(curUrl); curUrl = null; }
       let src;
-      const cached = await iget('blobs', id);
-      if (cached?.blob) {
-        curUrl = URL.createObjectURL(cached.blob); src = curUrl;
-        setBadge('', '● OFFLINE');
-      } else if (online && cfg.url) {
-        try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING'); }
-        catch { toast('Stream failed'); return; }
-      } else { toast('Not cached & offline'); return; }
+      // Use prefetched src if it's for this exact song
+      if (_prefetchId === id && _prefetchSrc) {
+        src = _prefetchSrc;
+        curUrl = _prefetchUrl || null; // may be a blob URL we need to track
+        _prefetchId = null; _prefetchSrc = null; _prefetchUrl = null;
+        setBadge(curUrl ? '' : 'stream', curUrl ? '● OFFLINE' : '⋯ STREAMING');
+      } else {
+        clearPrefetch(); // discard stale prefetch for a different song
+        const cached = await iget('blobs', id);
+        if (cached?.blob) {
+          curUrl = URL.createObjectURL(cached.blob); src = curUrl;
+          setBadge('', '● OFFLINE');
+        } else if (online && cfg.url) {
+          try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING'); }
+          catch { toast('Stream failed'); return; }
+        } else { toast('Not cached & offline'); return; }
+      }
       aud.src = src;
       if (auto) { try { await aud.play(); playing = true; } catch { playing = false; } }
       updateAllNP(song);
@@ -2698,7 +2763,6 @@
       schedulePlayCount(id);
       await pushNowPlaying(song);
       updNPActions();
-      // Fetch art only when this song is played — updates NP display if found
       if (!getMeta(id).albumArtUrl) {
         fetchArtForSong(song).then(() => updateAllNP(song));
       }
@@ -2810,9 +2874,16 @@ function setMS(song) {
       playSong(queue[qi]);
     }
 
+    let _userPaused = false; // track whether pause was user-initiated
+
     aud.addEventListener('ended', () => { if (rep === 2) { aud.currentTime = 0; aud.play(); } else playNext(); });
-    aud.addEventListener('play', () => { playing = true; updPBtn(); renderList(); });
-    aud.addEventListener('pause', () => { playing = false; updPBtn(); renderList(); if (curSong()) pushNowPlaying(curSong()); });
+    aud.addEventListener('play', () => { playing = true; _userPaused = false; updPBtn(); renderList(); });
+    aud.addEventListener('pause', () => {
+      playing = false; updPBtn(); renderList();
+      if (curSong()) pushNowPlaying(curSong());
+      // Only stop keepalive if this was a deliberate user pause, not a track transition
+      if (_userPaused) kaEl.pause();
+    });
 
     aud.addEventListener('timeupdate', () => {
       if (!aud.duration) return;
@@ -2827,6 +2898,9 @@ function setMS(song) {
       if (playing && Date.now() - lastNPPush > 15000 && curSong()) pushNowPlaying(curSong());
       if ('mediaSession' in navigator && navigator.mediaSession.setPositionState)
         try { navigator.mediaSession.setPositionState({ duration: aud.duration, playbackRate: 1, position: aud.currentTime }); } catch { }
+      // Prefetch next track when 25s (or 25%) remain — whichever threshold is hit first
+      const remaining = aud.duration - aud.currentTime;
+      if (!_prefetchId && (remaining < 25 || p > 75)) prefetchNext();
     });
     aud.addEventListener('loadedmetadata', () => {
       document.getElementById('tt').textContent = fmt(aud.duration);
@@ -2912,6 +2986,7 @@ function setMS(song) {
     function rebuildQ() {
       const s = getViewSongs(); queue = s.map(x => x.id);
       const cs = curSong(); qi = cs ? queue.indexOf(cs.id) : -1;
+      clearPrefetch();
       updCounts();
     }
 
@@ -3374,8 +3449,10 @@ function setMS(song) {
     // ── PLAYER CONTROLS ───────────────────────────────────────────────────────────
     function wirePlayPause(btnId) {
       document.getElementById(btnId).addEventListener('click', () => {
+        unlockAudioSession();
         if (!aud.src) { if (queue.length) { qi = 0; playSong(queue[0]); } return; }
-        playing ? aud.pause() : aud.play();
+        if (playing) { _userPaused = true; aud.pause(); }
+        else { _userPaused = false; aud.play(); }
       });
     }
     function wireShuffle(btnId) {
@@ -3562,6 +3639,12 @@ function setMS(song) {
         pollNowPlaying();
       } else if (!cfg.url) setSt('err', 'Not configured');
     }
+    // Unlock iOS audio session on first user interaction with the page
+    // (covers taps outside the play button — e.g. row taps, scroll, etc.)
+    ['touchend', 'mousedown'].forEach(evt => {
+      document.addEventListener(evt, unlockAudioSession, { once: true, passive: true });
+    });
+
     init();
   </script>
 </body>
