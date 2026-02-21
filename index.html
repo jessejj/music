@@ -2795,18 +2795,34 @@
       document.getElementById('np-pai').style.display = p ? 'block' : 'none';
     }
 
-    function setMS(song) {
-      if (!('mediaSession' in navigator)) return;
-      const meta = { title: song.title || '', artist: song.artist || '', album: song.album || '' };
-      const m = getMeta(song.id);
-      if (m.albumArtUrl) meta.artwork = [{ src: m.albumArtUrl, sizes: '600x600', type: 'image/jpeg' }];
-      navigator.mediaSession.metadata = new MediaMetadata(meta);
-      navigator.mediaSession.setActionHandler('play', () => { aud.play(); playing = true; updPBtn(); pushNowPlaying(curSong()); });
-      navigator.mediaSession.setActionHandler('pause', () => { aud.pause(); playing = false; updPBtn(); pushNowPlaying(curSong()); });
-      navigator.mediaSession.setActionHandler('previoustrack', () => playPrev(true));
-      navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
-      navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) aud.currentTime = d.seekTime; });
-    }
+function setMS(song) {
+  if (!('mediaSession' in navigator)) return;
+
+  const meta = {
+    title: song.title || '',
+    artist: song.artist || '',
+    album: song.album || ''
+  };
+
+  const m = getMeta(song.id);
+
+  const fallback = [
+    { src: '/img/artwork-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/img/artwork-192.png', sizes: '192x192', type: 'image/png' }
+  ];
+
+  meta.artwork = m.albumArtUrl
+    ? [{ src: m.albumArtUrl, sizes: '600x600', type: 'image/jpeg' }]
+    : fallback;
+
+  navigator.mediaSession.metadata = new MediaMetadata(meta);
+
+  navigator.mediaSession.setActionHandler('play', () => { aud.play(); playing = true; updPBtn(); pushNowPlaying(curSong()); });
+  navigator.mediaSession.setActionHandler('pause', () => { aud.pause(); playing = false; updPBtn(); pushNowPlaying(curSong()); });
+  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev(true));
+  navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
+  navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) aud.currentTime = d.seekTime; });
+}
 
     function curSong() { return qi >= 0 && qi < queue.length ? songs.find(s => s.id === queue[qi]) : null; }
     function playNext(userInitiated = false) {
