@@ -513,7 +513,10 @@
       transition: opacity .15s;
     }
 
-    /* .sr:hover .sdl removed */
+    .sr:hover .sdl {
+      opacity: 1;
+    }
+
     .sdl svg {
       color: var(--text3);
       cursor: pointer;
@@ -522,6 +525,10 @@
 
     .sdl svg:hover {
       color: var(--accent);
+    }
+
+    .sdl.cached {
+      opacity: 1; /* cached checkmark always visible */
     }
 
     .sdl.cached svg {
@@ -2424,6 +2431,7 @@
 
     // ── STATE ─────────────────────────────────────────────────────────────────────
     let songs = [], cachedIds = new Set(), pls = [], queue = [], qi = -1;
+    let playingId = null; // stable ID of the currently playing song — never changes on view switch
     let playing = false, shuf = false, rep = 0;
     let view = 'all', selId = null, ctxId = null, sq = '';
     // Per-view sort state: each view remembers its own sort col/dir
@@ -2539,9 +2547,13 @@
     async function syncLib() {
       if (!cfg.url || !cfg.apiKey) { showSet(); return; }
       setSt('loading', 'Syncing…');
+      console.log('[Sync] Starting library sync…');
+      const t0 = Date.now();
       try {
+        console.log('[Sync] Fetching library manifest from server…');
         const d = await afetch('library');
         songs = d.songs || [];
+        console.log(`[Sync] Got ${songs.length} songs from server (${Date.now()-t0}ms). Cache hit: ${!!d.cached}, Generated: ${d.generated ? new Date(d.generated*1000).toLocaleTimeString() : 'unknown'}`);
         try { localStorage.setItem('jb-manifest', JSON.stringify(songs)); } catch { }
         setSt('ok', `${songs.length} songs`);
         toast(`Synced — ${songs.length} songs`);
@@ -2549,17 +2561,22 @@
         await pullPlaylists();
         stampNewSongs();
         rebuildQ(); renderList(); renderSB();
-      } catch (e) { setSt('err', 'Error'); toast('Sync failed: ' + e.message); }
+        console.log(`[Sync] Complete in ${Date.now()-t0}ms`);
+      } catch (e) { setSt('err', 'Error'); toast('Sync failed: ' + e.message); console.error('[Sync] Failed:', e); }
     }
     function setSt(cls, txt) { const el = document.getElementById('sync-status'); el.className = cls; el.textContent = txt; }
 
     // ── SONG META (stars, flags, play history) ────────────────────────────────────
     async function pullMeta() {
+      console.log('[Sync] Fetching song meta (stars, play counts, skips)…');
       try {
         const d = await afetch('get_meta');
         songMeta = d.meta || {};
+        const metaCount = Object.keys(songMeta).length;
+        console.log(`[Sync] Got meta for ${metaCount} songs`);
         try { localStorage.setItem('jb-meta', JSON.stringify(songMeta)); } catch { }
       } catch {
+        console.warn('[Sync] Meta fetch failed — using local cache');
         try { const l = localStorage.getItem('jb-meta'); if (l) songMeta = JSON.parse(l); } catch { }
       }
     }
@@ -2591,16 +2608,19 @@
       if (!m.dateAdded) patch.dateAdded = Date.now();
       await pushMeta({ [id]: patch });
     }
-    // Stamp dateAdded on first sync for all songs that don't have it yet
     function stampNewSongs() {
       const now = Date.now();
       const patch = {};
       songs.forEach(s => {
-        if (!getMeta(s.id).dateAdded) {
-          patch[s.id] = { dateAdded: now }; // always stamp with today — "date added to this library"
-        }
+        if (!getMeta(s.id).dateAdded) patch[s.id] = { dateAdded: now };
       });
-      if (Object.keys(patch).length) pushMeta(patch);
+      const count = Object.keys(patch).length;
+      if (count) {
+        console.log(`[Sync] Stamping dateAdded for ${count} new/unstamped songs`);
+        pushMeta(patch);
+      } else {
+        console.log('[Sync] All songs already have dateAdded stamps');
+      }
     }
 
     // iTunes rule: log a play after 20s OR half the track duration, whichever is less.
@@ -2740,15 +2760,18 @@
     });
     function showInLibrary() {
       const cs = curSong(); if (!cs) return;
-      // Find which playlist this song is in (if currently viewing a playlist)
-      const targetView = 'all'; // always jump to all songs
-      if (view !== targetView) switchView(targetView);
-      // Select and scroll to the song
+      // Switch to Songs view without touching the frozen queue
+      if (view !== 'all') {
+        view = 'all';
+        document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === 'all'));
+      }
       selId = cs.id;
-      rebuildQ(); renderList();
+      renderList(); renderSB();
+      // Scroll to the row — give DOM a tick to settle
       setTimeout(() => {
         const row = document.querySelector(`.sr[data-id="${CSS.escape(String(cs.id))}"]`);
-        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        else { console.warn('[showInLibrary] Song not found in Songs view — may not be in library'); }
       }, 50);
       toast('Showing in Songs');
     }
@@ -2771,19 +2794,30 @@
     });
 
     // ── PLAYBACK ──────────────────────────────────────────────────────────────────
-    async function playSong(id, auto = true) {
+    async function playSong(id, auto = true, userInitiated = false) {
       const song = songs.find(s => s.id === id); if (!song) return;
+
+      // Freeze queue when user explicitly starts playback from a view
+      if (userInitiated) freezeQueue(id);
+
+      // Keep qi in sync with frozen queue
+      const newQi = queue.indexOf(id);
+      if (newQi >= 0) qi = newQi;
+
+      // Stable playing ID — never changes on view switch or rebuildQ
+      playingId = id;
+
       // Revoke any previous blob URL
       if (curUrl && curUrl !== _prefetchUrl) { URL.revokeObjectURL(curUrl); curUrl = null; }
       let src;
       // Use prefetched src if it's for this exact song
       if (_prefetchId === id && _prefetchSrc) {
         src = _prefetchSrc;
-        curUrl = _prefetchUrl || null; // may be a blob URL we need to track
+        curUrl = _prefetchUrl || null;
         _prefetchId = null; _prefetchSrc = null; _prefetchUrl = null;
         setBadge(curUrl ? '' : 'stream', curUrl ? '● OFFLINE' : '⋯ STREAMING');
       } else {
-        clearPrefetch(); // discard stale prefetch for a different song
+        clearPrefetch();
         const cached = await iget('blobs', id);
         if (cached?.blob) {
           curUrl = URL.createObjectURL(cached.blob); src = curUrl;
@@ -2893,27 +2927,39 @@ function setMS(song) {
   navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) aud.currentTime = d.seekTime; });
 }
 
-    function curSong() { return qi >= 0 && qi < queue.length ? songs.find(s => s.id === queue[qi]) : null; }
+    // curSong uses playingId (stable string) not qi (index that changes on queue rebuild)
+    function curSong() { return playingId ? songs.find(s => s.id === playingId) || null : null; }
+
+    // Snapshot the current view's song list as the frozen queue.
+    // Called when the user initiates playback from a view.
+    function freezeQueue(startId) {
+      const s = getViewSongs();
+      queue = s.map(x => x.id);
+      qi = startId ? queue.indexOf(startId) : 0;
+      if (qi < 0) qi = 0;
+      clearPrefetch();
+      updCounts();
+      console.log(`[Queue] Frozen from view="${view}" — ${queue.length} songs, starting at qi=${qi} id=${startId || queue[0]}`);
+    }
     function playNext(userInitiated = false) {
       if (!queue.length) return;
-      // Log skip if user manually skipped while song was playing
       if (userInitiated && playing && qi >= 0) {
         const skippedId = queue[qi];
-        // Only log if we're more than 3s in (accidental taps don't count)
         if (aud.currentTime > 3) recordSkip(skippedId);
       }
       qi = shuf ? Math.floor(Math.random() * queue.length) : (qi + 1) % queue.length;
+      playingId = queue[qi];
       playSong(queue[qi]);
     }
     function playPrev(userInitiated = false) {
       if (aud.currentTime > 3) { aud.currentTime = 0; return; }
       if (!queue.length) return;
-      // Skipping back also counts as skipping the current song
       if (userInitiated && playing && qi >= 0) {
         const skippedId = queue[qi];
         if (aud.currentTime > 3) recordSkip(skippedId);
       }
       qi = shuf ? Math.floor(Math.random() * queue.length) : (qi - 1 + queue.length) % queue.length;
+      playingId = queue[qi];
       playSong(queue[qi]);
     }
 
@@ -3057,9 +3103,11 @@ function setMS(song) {
       return applySort(s, col, dir);
     }
     function rebuildQ() {
-      if (view !== 'upnext') {
-        const s = getViewSongs(); queue = s.map(x => x.id);
-        const cs = curSong(); qi = cs ? queue.indexOf(cs.id) : -1;
+      // Queue is frozen by playSong(userInitiated=true) — rebuildQ only updates qi
+      // from playingId so that playNext/playPrev stay in sync after edits.
+      if (playingId) {
+        const newQi = queue.indexOf(playingId);
+        if (newQi >= 0) qi = newQi;
       }
       clearPrefetch();
       updCounts();
@@ -3073,15 +3121,15 @@ function setMS(song) {
     const DL_SVG     = `<polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/>`;
 
     function getViewCols(v) {
-      // Returns array of column definitions for header + row rendering
       const isPlaylist = pls.some(p => String(p.id) === String(v));
-      const numCol  = { col: 'num',       label: '#',          width: '32px',  align: 'right' };
-      const titleCol= { col: 'title',     label: 'Title',      width: '1fr'  };
-      const artistCol={ col: 'artist',    label: 'Artist',     width: '15%'  };
-      const albumCol = { col: 'album',    label: 'Album',      width: '14%'  };
-      const timeCol  = { col: 'duration', label: 'Time',       width: '48px', align: 'right' };
-      const starCol  = { col: 'star',     svgLabel: HEART_SVG, width: '26px', align: 'center', noSort: false };
-      const cacheCol = { col: '_cache',   svgLabel: CHECK_SVG, width: '22px', align: 'center', noSort: true };
+      const numCol   = { col: 'num',       label: '#',          width: '32px',  align: 'right' };
+      const titleCol = { col: 'title',     label: 'Title',      width: '1fr'  };
+      const artistCol= { col: 'artist',    label: 'Artist',     width: '15%'  };
+      const albumCol = { col: 'album',     label: 'Album',      width: '14%'  };
+      const timeCol  = { col: 'duration',  label: 'Time',       width: '48px', align: 'right' };
+      const starCol  = { col: 'star',      svgLabel: HEART_SVG, width: '26px', align: 'center', noSort: false };
+      const cacheCol = { col: '_cache',    svgLabel: CHECK_SVG, width: '22px', align: 'center', noSort: true };
+      const removeCol= { col: '_remove',   svgLabel: '',        width: '22px', align: 'center', noSort: true };
       const playsCol = { col: 'playcount',  label: 'Plays',    width: '48px', align: 'right' };
       const skipsCol = { col: 'skipcount',  label: 'Skips',    width: '48px', align: 'right' };
       const lpCol    = { col: 'lastplayed', label: 'Last Played', width: '80px' };
@@ -3090,7 +3138,7 @@ function setMS(song) {
       if (v === 'all' || v === 'cached')
         return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
       if (v === 'upnext')
-        return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol, removeCol];
       if (v === 'recently-added')
         return [numCol, titleCol, timeCol, artistCol, daCol,    starCol, cacheCol];
       if (v === 'recently-played')
@@ -3121,14 +3169,31 @@ function setMS(song) {
         const isSorted = c.col === colSorted && !c.noSort;
         const arrow = isSorted ? (colDir === 1 ? ' ▲' : ' ▼') : '';
         const cls = 'ch' + (isSorted ? ' sorted' : '') + (c.align === 'center' ? ' ch-center' : '') + (c.align === 'right' ? ' ch-right' : '');
+        // _remove column header is empty
+        if (c.col === '_remove') return `<div class="${cls}" style="cursor:default"></div>`;
         const lbl = c.svgLabel ? c.svgLabel : (esc(c.label || '') + `<span class="sa-arrow">${arrow}</span>`);
-        const sortable = !c.noSort && c.col !== 'num' && c.col !== '_cache';
+        const sortable = !c.noSort && c.col !== 'num' && c.col !== '_cache' && c.col !== '_remove';
         return `<div class="${cls}" data-col="${c.col}" ${sortable ? '' : 'style="cursor:default"'}>${lbl}</div>`;
       }).join('');
+      // For Up Next, append a Clear button after the headers
+      if (v === 'upnext' && queue.length) {
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'tb';
+        clearBtn.style.cssText = 'margin-left:auto;font-size:11px;padding:2px 8px;opacity:.6';
+        clearBtn.textContent = 'Clear';
+        clearBtn.title = 'Clear Up Next queue';
+        clearBtn.addEventListener('click', () => {
+          if (!playingId) { queue = []; qi = -1; }
+          else { queue = [playingId]; qi = 0; } // keep only currently playing song
+          clearPrefetch(); updCounts(); renderList();
+          console.log('[Queue] Cleared');
+        });
+        hdrs.appendChild(clearBtn);
+      }
       // Wire sort clicks
       hdrs.querySelectorAll('.ch[data-col]').forEach(el => {
         const col = el.dataset.col;
-        if (!col || col === 'num' || col === '_cache') return;
+        if (!col || col === 'num' || col === '_cache' || col === '_remove') return;
         el.addEventListener('click', () => {
           const cur = getSortFor(view);
           const newDir = cur.col === col ? cur.dir * -1 : 1;
@@ -3194,8 +3259,8 @@ function setMS(song) {
           ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.style.display='none'">`
           : `<div class="art-placeholder"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>`;
 
-        // Track number: playlist position for playlists, album track for everything else
-        const trackNum = isPlaylist ? (i + 1) : (song.track || (i + 1));
+        // Track number: playlist/upnext = position in list, everything else = album track
+        const trackNum = (isPlaylist || isUpNext) ? (i + 1) : (song.track || (i + 1));
 
         if (mobile) {
           row.style.gridTemplateColumns = '30px 36px 1fr 56px 34px';
@@ -3210,7 +3275,8 @@ function setMS(song) {
             <div class="s-flag-col star-btn${starred ? ' on' : ''}" data-id="${song.id}" style="display:flex;align-items:center;justify-content:center">${starSvg}</div>`;
         } else {
           row.style.gridTemplateColumns = tpl;
-          if (isPlaylist && !isUpNext) row.draggable = true;
+          // Enable drag for playlists AND Up Next
+          if (isPlaylist || isUpNext) row.draggable = true;
 
           // Build cells matching cols
           const cells = cols.map(c => {
@@ -3218,9 +3284,8 @@ function setMS(song) {
               return `<div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="10" height="10" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>`;
             }
             if (c.col === 'title') {
-              // Title cell includes art thumbnail
-              return `<div class="st-cell" style="display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden">
-                <div style="flex-shrink:0">${artHtml}</div>
+              // Compact — no art thumbnail on desktop
+              return `<div class="st-cell" style="display:flex;align-items:center;min-width:0;overflow:hidden">
                 <span class="st" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(song.title || 'Unknown')}</span>
               </div>`;
             }
@@ -3233,6 +3298,7 @@ function setMS(song) {
             if (c.col === 'dateadded') return `<div class="sd">${fmtDate(getMeta(song.id).dateAdded || song.modified * 1000)}</div>`;
             if (c.col === 'star') return `<div class="s-flag-col star-btn${starred ? ' on' : ''}" data-id="${song.id}">${starSvg}</div>`;
             if (c.col === '_cache') return `<div class="sdl${isCached ? ' cached' : ''}">${cacheSvg}</div>`;
+            if (c.col === '_remove') return `<div class="sq-remove" data-id="${song.id}" title="Remove from queue" style="display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.4;transition:opacity .1s"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`;
             return `<div></div>`;
           });
           row.innerHTML = cells.join('');
@@ -3241,8 +3307,29 @@ function setMS(song) {
           const cacheEl = row.querySelector('.sdl');
           if (cacheEl) cacheEl.addEventListener('click', e => { e.stopPropagation(); isCached ? uncache(song.id) : cacheSong(song.id); });
 
-          // Drag-to-reorder for playlists
-          if (isPlaylist && !isUpNext) {
+          // Remove from Up Next queue
+          const removeEl = row.querySelector('.sq-remove');
+          if (removeEl) {
+            removeEl.addEventListener('mouseenter', () => { removeEl.style.opacity = '1'; });
+            removeEl.addEventListener('mouseleave', () => { removeEl.style.opacity = '.4'; });
+            removeEl.addEventListener('click', e => {
+              e.stopPropagation();
+              const idx = queue.indexOf(song.id);
+              if (idx < 0) return;
+              // If removing the currently playing song, don't remove — that would be confusing
+              if (song.id === playingId) { toast('Cannot remove currently playing song'); return; }
+              queue.splice(idx, 1);
+              // Adjust qi if removed item was before current position
+              if (idx < qi) qi--;
+              clearPrefetch();
+              updCounts();
+              renderList();
+              console.log(`[Queue] Removed id=${song.id}, queue now ${queue.length} songs`);
+            });
+          }
+
+          // Drag-to-reorder for playlists and Up Next
+          if (isPlaylist || isUpNext) {
             row.addEventListener('dragstart', e => {
               e.dataTransfer.effectAllowed = 'move';
               e.dataTransfer.setData('text/plain', song.id);
@@ -3260,9 +3347,8 @@ function setMS(song) {
               const mid = rect.top + rect.height / 2;
               row.classList.toggle('drag-over-top', e.clientY < mid);
               row.classList.toggle('drag-over-bottom', e.clientY >= mid);
-              // Clear other rows
               document.querySelectorAll('.sr').forEach(r => {
-                if (r !== row) { r.classList.remove('drag-over-top','drag-over-bottom'); }
+                if (r !== row) r.classList.remove('drag-over-top','drag-over-bottom');
               });
             });
             row.addEventListener('dragleave', () => {
@@ -3273,20 +3359,38 @@ function setMS(song) {
               row.classList.remove('drag-over-top','drag-over-bottom');
               const dragId = e.dataTransfer.getData('text/plain');
               if (!dragId || dragId === song.id) return;
-              const pl = pls.find(p => String(p.id) === String(view));
-              if (!pl) return;
-              const sids = [...pl.sids];
-              const fromIdx = sids.indexOf(String(dragId));
-              const toIdx   = sids.indexOf(String(song.id));
-              if (fromIdx < 0 || toIdx < 0) return;
               const rect = row.getBoundingClientRect();
               const insertAfter = e.clientY >= rect.top + rect.height / 2;
-              sids.splice(fromIdx, 1);
-              const newIdx = sids.indexOf(String(song.id));
-              sids.splice(insertAfter ? newIdx + 1 : newIdx, 0, String(dragId));
-              pl.sids = sids;
-              pushPlaylists();
-              rebuildQ(); renderList();
+
+              if (isUpNext) {
+                // Mutate frozen queue directly
+                const fromIdx = queue.indexOf(dragId);
+                const toIdx   = queue.indexOf(song.id);
+                if (fromIdx < 0 || toIdx < 0) return;
+                queue.splice(fromIdx, 1);
+                const newTo = queue.indexOf(song.id);
+                queue.splice(insertAfter ? newTo + 1 : newTo, 0, dragId);
+                // Resync qi
+                if (playingId) { const nqi = queue.indexOf(playingId); if (nqi >= 0) qi = nqi; }
+                clearPrefetch();
+                updCounts();
+                renderList();
+                console.log(`[Queue] Reordered — moved ${dragId} to ${insertAfter ? 'after' : 'before'} ${song.id}`);
+              } else {
+                // Playlist reorder
+                const pl = pls.find(p => String(p.id) === String(view));
+                if (!pl) return;
+                const sids = [...pl.sids];
+                const fromIdx = sids.indexOf(String(dragId));
+                const toIdx   = sids.indexOf(String(song.id));
+                if (fromIdx < 0 || toIdx < 0) return;
+                sids.splice(fromIdx, 1);
+                const newIdx = sids.indexOf(String(song.id));
+                sids.splice(insertAfter ? newIdx + 1 : newIdx, 0, String(dragId));
+                pl.sids = sids;
+                pushPlaylists();
+                renderList();
+              }
             });
           }
         }
@@ -3294,7 +3398,7 @@ function setMS(song) {
         // Star click
         row.querySelector('.star-btn')?.addEventListener('click', e => { e.stopPropagation(); toggleStar(song.id); });
 
-        row.addEventListener('dblclick', () => { qi = queue.indexOf(song.id); if (qi < 0) { rebuildQ(); qi = queue.indexOf(song.id); } playSong(song.id); });
+        row.addEventListener('dblclick', () => { playSong(song.id, true, true); });
         row.addEventListener('click', e => {
           if (e.shiftKey && bulkMode && lastBulkIdx >= 0) {
             const allRows = Array.from(document.querySelectorAll('#sl .sr'));
@@ -3406,9 +3510,8 @@ function setMS(song) {
     function switchView(v) {
       view = v;
       document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', String(el.dataset.view) === String(v)));
-      // For upnext, don't rebuild queue — just re-render
-      if (v === 'upnext') { renderList(); renderSB(); return; }
-      rebuildQ(); renderList(); renderSB();
+      // Browsing never rebuilds the queue — queue is frozen at playSong time
+      renderList(); renderSB();
     }
 
     // ── MOBILE SIDEBAR ────────────────────────────────────────────────────────────
@@ -3598,7 +3701,7 @@ function setMS(song) {
       menu.classList.add('show');
     }
     function hideCtx() { document.getElementById('ctx').classList.remove('show'); }
-    document.getElementById('ctx-play').addEventListener('click', () => { if (ctxId) { qi = queue.indexOf(ctxId); playSong(ctxId); } hideCtx(); });
+    document.getElementById('ctx-play').addEventListener('click', () => { if (ctxId) { playSong(ctxId, true, true); } hideCtx(); });
     document.getElementById('ctx-next').addEventListener('click', () => { if (ctxId) queue.splice(qi + 1, 0, ctxId); hideCtx(); });
     document.getElementById('ctx-star').addEventListener('click', () => { if (ctxId) toggleStar(ctxId); hideCtx(); });
     document.getElementById('ctx-cache').addEventListener('click', () => { if (ctxId) { cachedIds.has(ctxId) ? uncache(ctxId) : cacheSong(ctxId); } hideCtx(); });
@@ -3611,7 +3714,12 @@ function setMS(song) {
     function wirePlayPause(btnId) {
       document.getElementById(btnId).addEventListener('click', () => {
         unlockAudioSession();
-        if (!aud.src) { if (queue.length) { qi = 0; playSong(queue[0]); } return; }
+        if (!aud.src) {
+          // No song loaded — freeze queue from current view and start first song
+          freezeQueue(null);
+          if (queue.length) { qi = 0; playSong(queue[0], true, false); } // queue already frozen
+          return;
+        }
         if (playing) { _userPaused = true; aud.pause(); }
         else { _userPaused = false; aud.play(); }
       });
@@ -3784,21 +3892,28 @@ function setMS(song) {
 
     // ── INIT ──────────────────────────────────────────────────────────────────────
     async function init() {
+      console.log('[Init] Starting…');
       await openDB();
       await loadCachedIds();
-      try { const m = localStorage.getItem('jb-manifest'); if (m) { songs = JSON.parse(m); setSt('', 'Cached manifest'); } } catch { }
-      try { const l = localStorage.getItem('jb-meta'); if (l) songMeta = JSON.parse(l); } catch { }
+      console.log(`[Init] IndexedDB ready — ${cachedIds.size} songs cached offline`);
+      try { const m = localStorage.getItem('jb-manifest'); if (m) { songs = JSON.parse(m); console.log(`[Init] Loaded ${songs.length} songs from localStorage manifest`); setSt('', 'Cached manifest'); } } catch { }
+      try { const l = localStorage.getItem('jb-meta'); if (l) { songMeta = JSON.parse(l); console.log(`[Init] Loaded meta for ${Object.keys(songMeta).length} songs from localStorage`); } } catch { }
       await pullPlaylists();
       rebuildQ(); renderList(); renderSB();
       document.getElementById('vf').style.width = (aud.volume * 100) + '%';
       document.getElementById('np-panel-vf').style.width = (aud.volume * 100) + '%';
       if (cfg.url && cfg.apiKey && navigator.onLine) {
         setSt('loading', 'Connecting…');
-        syncLib(); // also calls pullMeta and pullPlaylists
-        // Start live polling every 12 seconds
+        console.log(`[Init] Online — starting sync to ${cfg.url}`);
+        syncLib();
         livePoller = setInterval(pollNowPlaying, 12000);
         pollNowPlaying();
-      } else if (!cfg.url) setSt('err', 'Not configured');
+      } else if (!cfg.url) {
+        setSt('err', 'Not configured');
+        console.log('[Init] No NAS URL configured — open Settings to set up');
+      } else {
+        console.log('[Init] Offline — using cached data only');
+      }
     }
     // Unlock iOS audio session on first user interaction with the page
     // (covers taps outside the play button — e.g. row taps, scroll, etc.)
