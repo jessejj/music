@@ -107,7 +107,7 @@
     #app {
       display: grid;
       grid-template-columns: var(--sw) 1fr;
-      grid-template-rows: var(--th) 1fr var(--ph);
+      grid-template-rows: var(--th) 1fr auto var(--ph);
       height: 100dvh;
     }
 
@@ -1097,7 +1097,7 @@
 
       #app {
         grid-template-columns: 1fr;
-        grid-template-rows: var(--th) 1fr;
+        grid-template-rows: var(--th) 1fr auto;
         height: 100dvh;
       }
 
@@ -1108,6 +1108,12 @@
 
       #player {
         display: none;
+      }
+
+      /* Status bar on mobile — grid row 3, full width */
+      #status-bar {
+        grid-row: 3;
+        padding-bottom: max(4px, env(safe-area-inset-bottom));
       }
 
       /* Toolbar mobile layout */
@@ -1289,6 +1295,7 @@
       /* Mobile bottom player */
       #mob-player {
         display: flex;
+        flex-direction: column;
         position: fixed;
         bottom: 0;
         left: 0;
@@ -1297,13 +1304,41 @@
         padding-bottom: max(0px, env(safe-area-inset-bottom));
         background: var(--bg2);
         border-top: 1px solid var(--border);
-        align-items: center;
-        padding-left: 12px;
-        padding-right: 12px;
-        gap: 10px;
         z-index: 30;
-        cursor: pointer;
       }
+
+      #mob-player-inner {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        padding: 0 12px;
+        gap: 10px;
+        cursor: pointer;
+        min-width: 0;
+      }
+
+      #mob-search-inline {
+        flex: 1;
+        padding: 0 12px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+      }
+      #mob-search-inline.open {
+        display: flex;
+      }
+
+      #mob-search-input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: var(--text);
+        font-size: 15px;
+        min-width: 0;
+        font-family: inherit;
+      }
+      #mob-search-input::placeholder { color: var(--text3); }
 
       /* Push list up to not be covered by mob-player */
       #lw {
@@ -1412,12 +1447,6 @@
 
       #toast {
         bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)) + 10px);
-      }
-
-      /* Status bar — more compact on mobile */
-      #status-bar {
-        font-size: 9px;
-        padding: 3px 8px;
       }
 
       /* Full-screen now playing panel */
@@ -1622,86 +1651,24 @@
         pointer-events: none;
       }
 
-      /* Hide desktop search on mobile — replaced by bottom search */
+      /* Hide desktop search on mobile — search is in player bar */
       #search-wrap {
         display: none !important;
       }
 
-      /* Mobile bottom search bar */
+      /* Old mob-search-bar above player — hidden (replaced by inline in player) */
       #mob-search-bar {
-        display: flex;
-        position: fixed;
-        bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)));
-        left: 0;
-        right: 0;
-        background: var(--bg2);
-        border-top: 1px solid var(--border);
-        align-items: center;
-        padding: 8px 12px;
-        gap: 8px;
-        z-index: 31;
-        transform: translateY(100%);
-        transition: transform .22s ease;
+        display: none !important;
       }
 
-      #mob-search-bar.open {
-        transform: translateY(0);
-      }
-
-      #mob-search {
-        flex: 1;
-        background: var(--bg3);
-        border: 1px solid var(--border2);
-        border-radius: 10px;
-        color: var(--text);
-        font-family: 'DM Sans', sans-serif;
-        font-size: 15px;
-        padding: 7px 12px;
-        outline: none;
-        min-width: 0;
-      }
-
-      #mob-search:focus {
-        border-color: var(--accent);
-      }
-
-      #mob-search::placeholder {
-        color: var(--text3);
-      }
-
-      /* Floating search trigger button — lives above mob-player, bottom-right */
-      #mob-search-btn {
-        display: flex;
-        position: fixed;
-        bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)) + 10px);
-        right: 14px;
-        width: 40px;
-        height: 40px;
-        background: var(--bg3);
-        border: 1px solid var(--border2);
-        border-radius: 50%;
-        align-items: center;
-        justify-content: center;
-        z-index: 32;
-        cursor: pointer;
-        box-shadow: 0 2px 8px var(--shadow);
+      /* mob-search-trigger button in ctrls */
+      #mob-search-trigger {
         color: var(--text2);
-        transition: all .15s;
       }
 
-      #mob-search-btn.has-query {
-        background: var(--accent-dk);
-        border-color: var(--accent);
-        color: #fff;
-      }
-
-      #mob-search-btn:active {
-        transform: scale(.9);
-      }
-
-      /* Push list bottom padding to account for search btn + player */
+      /* Push list bottom padding — just player height, no floating btn */
       #lw {
-        padding-bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)) + 56px);
+        padding-bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)));
       }
 
       /* Mobile column headers — 5 cols matching rows: # | art | Title | Time | ♥ */
@@ -1913,6 +1880,8 @@
 
     /* iTunes-style status bar */
     #status-bar {
+      grid-column: 1 / -1;
+      grid-row: 3;
       flex-shrink: 0;
       padding: 4px 12px;
       background: var(--bg2);
@@ -1927,7 +1896,48 @@
       gap: 12px;
     }
 
-    /* Go-to arrows on now-playing row */
+    /* Up Next remove button — hover only like cache checkmark */
+    .sq-remove {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity .15s;
+      color: var(--text3);
+    }
+    .sr:hover .sq-remove { opacity: 1; }
+    .sq-remove:hover { color: var(--danger, #e5143a) !important; }
+    /* Mobile swipe action buttons */
+    .swipe-action {
+      position: absolute;
+      top: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 5;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    /* Quick-add to playlist button — hover only */
+    .sq-addpl {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity .15s;
+      color: var(--text3);
+    }
+    .sr:hover .sq-addpl { opacity: 1; }
+    .sq-addpl:hover { color: var(--accent) !important; }
+
+    .swipe-remove { right: 0; background: #e5143a; color: #fff; }
+    .swipe-add    { left:  0; background: var(--accent); color: #fff; }
+
     .sa-goto, .sb-goto {
       display: flex;
       align-items: center;
@@ -2154,16 +2164,6 @@
       </div>
       <div id="pl-nav"></div>
       <button id="new-pl">+ New Playlist</button>
-      <div class="sb-foot">
-        <button class="tb" id="cache-view-btn" style="justify-content:center;font-size:11.5px">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="8 17 12 21 16 17" />
-            <line x1="12" y1="12" x2="12" y2="21" />
-            <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29" />
-          </svg>
-          Cache current view
-        </button>
-      </div>
     </div>
 
     <!-- MAIN -->
@@ -2204,11 +2204,12 @@
           <button class="tb accent" id="empty-set" style="margin-top:10px">Open Settings</button>
         </div>
       </div>
-      <!-- Status bar — iTunes-style song count / duration / size -->
-      <div id="status-bar">
-        <span id="status-bar-txt"></span>
-        <button id="reset-cache-btn" class="tb" style="display:none;font-size:10px;padding:1px 8px;opacity:.6;color:var(--danger,#e5143a);border-color:currentColor">Reset Cache</button>
-      </div>
+    </div>
+
+    <!-- STATUS BAR — spans full width between main and player -->
+    <div id="status-bar">
+      <span id="status-bar-txt"></span>
+      <button id="reset-cache-btn" class="tb" style="display:none;font-size:10px;padding:1px 8px;opacity:.6;color:var(--danger,#e5143a);border-color:currentColor">Reset Cache</button>
     </div>
 
     <!-- DESKTOP PLAYER -->
@@ -2285,51 +2286,62 @@
 
   </div><!-- end #app -->
 
-  <!-- MOBILE SEARCH TRIGGER BUTTON -->
-  <button id="mob-search-btn" aria-label="Search">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  </button>
-
   <!-- MOBILE PLAYER STRIP -->
   <div id="mob-player">
     <div id="mob-progress">
       <div id="mob-pf"></div>
     </div>
-    <div id="mob-art">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <path d="M9 18V5l12-2v13" />
-        <circle cx="6" cy="18" r="3" />
-        <circle cx="18" cy="16" r="3" />
+    <!-- Normal player content -->
+    <div id="mob-player-inner">
+      <div id="mob-art">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 18V5l12-2v13" />
+          <circle cx="6" cy="18" r="3" />
+          <circle cx="18" cy="16" r="3" />
+        </svg>
+      </div>
+      <div id="mob-info">
+        <div id="mob-np-t">Not playing</div>
+        <div id="mob-np-a">—</div>
+      </div>
+      <div id="mob-live-dot-wrap" style="display:flex;align-items:center;padding:0 4px;flex-shrink:0">
+        <span class="live-dot" id="mob-live-dot"></span>
+      </div>
+      <div id="mob-ctrls">
+        <button class="mob-cb" id="mob-search-trigger" aria-label="Search" title="Search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+        </button>
+        <button class="mob-cb" id="mob-prev"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 20L9 12l10-8v16z" />
+            <rect x="5" y="4" width="2" height="16" />
+          </svg></button>
+        <button id="mob-pbtn">
+          <svg id="mob-pli" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          <svg id="mob-pai" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+        </button>
+        <button class="mob-cb" id="mob-nxt"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 4l10 8-10 8V4z" />
+            <rect x="17" y="4" width="2" height="16" />
+          </svg></button>
+      </div>
+    </div>
+    <!-- Inline search (replaces player content when open) -->
+    <div id="mob-search-inline" style="display:none;align-items:center;gap:8px;flex:1;padding:0 10px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;color:var(--text3)">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
       </svg>
-    </div>
-    <div id="mob-info">
-      <div id="mob-np-t">Not playing</div>
-      <div id="mob-np-a">—</div>
-    </div>
-    <div id="mob-live-dot-wrap" style="display:flex;align-items:center;padding:0 4px;flex-shrink:0">
-      <span class="live-dot" id="mob-live-dot"></span>
-    </div>
-    <div id="mob-ctrls">
-      <button class="mob-cb" id="mob-prev"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19 20L9 12l10-8v16z" />
-          <rect x="5" y="4" width="2" height="16" />
-        </svg></button>
-      <button id="mob-pbtn">
-        <svg id="mob-pli" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-        <svg id="mob-pai" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="display:none">
-          <rect x="6" y="4" width="4" height="16" />
-          <rect x="14" y="4" width="4" height="16" />
-        </svg>
-      </button>
-      <button class="mob-cb" id="mob-nxt"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M5 4l10 8-10 8V4z" />
-          <rect x="17" y="4" width="2" height="16" />
-        </svg></button>
+      <input type="text" id="mob-search-input" placeholder="Search…" autocomplete="off" autocorrect="off" spellcheck="false"
+        style="flex:1;background:none;border:none;outline:none;color:var(--text);font-size:15px;min-width:0">
+      <button id="mob-search-cancel-btn" style="background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0 4px;white-space:nowrap;flex-shrink:0">Cancel</button>
     </div>
   </div>
 
@@ -2397,11 +2409,7 @@
           <path
             d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
         </svg></button>
-      <button class="np-cb" id="np-show-in-songs" title="Show in Songs"><svg width="18" height="18" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.35-4.35" />
-        </svg></button>
+      <button class="np-cb" id="np-show-in-songs" title="Show in Songs" style="font-size:22px;line-height:1">↩</button>
     </div>
     <div id="np-panel-vol">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2415,6 +2423,13 @@
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
       </svg>
     </div>
+  </div>
+
+  <!-- PLAYLIST CONTEXT MENU -->
+  <div id="pl-ctx" style="display:none;position:fixed;z-index:200;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 16px var(--shadow);padding:4px 0;min-width:140px">
+    <div class="ci" id="pl-ctx-rename">Rename…</div>
+    <div class="cs"></div>
+    <div class="ci danger" id="pl-ctx-delete">Delete Playlist</div>
   </div>
 
   <!-- CONTEXT MENU -->
@@ -2431,6 +2446,7 @@
       played</div>
     <div class="cs"></div>
     <div class="ci" id="ctx-cache">↓ Cache for Offline</div>
+    <div class="ci" id="ctx-cache-view">↓ Cache Entire View</div>
     <div id="ctx-pls"></div>
     <div class="cs" id="ctx-pls-sep" style="display:none"></div>
     <div class="ci danger" id="ctx-uncache">Remove from Cache</div>
@@ -3274,36 +3290,37 @@ function setMS(song) {
       const isPlaylist = pls.some(p => String(p.id) === String(v));
       const removeCol= { col: '_remove',    svgLabel: '',              width: '20px',  align: 'center', noSort: true };
       const numCol   = { col: 'num',        label: '#',                width: '30px',  align: 'right' };
-      const titleCol = { col: 'title',      label: 'Title',            width: '28%'  };
-      const artistCol= { col: 'artist',     label: 'Artist',           width: '18%'  };
-      const albumCol = { col: 'album',      label: 'Album',            width: '18%'  };
+      const titleCol = { col: 'title',      label: 'Title',            width: '1fr'  };
+      const artistCol= { col: 'artist',     label: 'Artist',           width: '160px'  };
+      const albumCol = { col: 'album',      label: 'Album',            width: '160px'  };
       const timeCol  = { col: 'duration',   label: 'Time',             width: '46px', align: 'right' };
       const starCol  = { col: 'star',       svgLabel: HEART_SVG,       width: '26px', align: 'center', noSort: false };
       const cacheCol = { col: '_cache',     svgLabel: CHECK_SVG,       width: '22px', align: 'center', noSort: true };
+      const addplCol = { col: '_addpl',     svgLabel: '',              width: '22px', align: 'center', noSort: true };
       const playsCol = { col: 'playcount',  label: 'Plays',            width: '50px', align: 'right' };
       const skipsCol = { col: 'skipcount',  label: 'Skips',            width: '50px', align: 'right' };
       const lpCol    = { col: 'lastplayed', label: 'Last Played',      width: '100px' };
       const daCol    = { col: 'dateadded',  label: 'Date Added',       width: '100px' };
 
       if (v === 'all' || v === 'cached')
-        return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, albumCol, addplCol, starCol, cacheCol];
       if (v === 'upnext')
         return [removeCol, numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
       if (v === 'recently-added')
-        return [numCol, titleCol, timeCol, artistCol, daCol,    starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, daCol,    addplCol, starCol, cacheCol];
       if (v === 'recently-played')
-        return [numCol, titleCol, timeCol, artistCol, lpCol,    starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, lpCol,    addplCol, starCol, cacheCol];
       if (v === 'most-played')
-        return [numCol, titleCol, timeCol, artistCol, playsCol, starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, playsCol, addplCol, starCol, cacheCol];
       if (v === 'most-skipped')
-        return [numCol, titleCol, timeCol, artistCol, skipsCol, starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, skipsCol, addplCol, starCol, cacheCol];
       if (v === 'never-played')
-        return [numCol, titleCol, timeCol, artistCol, daCol,    starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, daCol,    addplCol, starCol, cacheCol];
       if (v === 'starred')
-        return [numCol, titleCol, timeCol, artistCol, lpCol,    starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, lpCol,    addplCol, starCol, cacheCol];
       if (isPlaylist)
         return [numCol, titleCol, timeCol, artistCol, playsCol, skipsCol, starCol, cacheCol];
-      return [numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
+      return [numCol, titleCol, timeCol, artistCol, albumCol, addplCol, starCol, cacheCol];
     }
 
     function renderColHdrs(v) {
@@ -3403,7 +3420,7 @@ function setMS(song) {
         if (mobile) {
           row.style.gridTemplateColumns = '30px 36px 1fr 56px 34px';
           row.innerHTML = `
-            <div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="10" height="10" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>
+            <div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>
             <div style="display:flex;align-items:center;padding:3px 4px">${artHtml}</div>
             <div class="s-cell">
               <span class="st">${esc(song.title || 'Unknown')}</span>
@@ -3419,7 +3436,7 @@ function setMS(song) {
           // Build cells matching cols
           const cells = cols.map(c => {
             if (c.col === 'num') {
-              return `<div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="10" height="10" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>`;
+              return `<div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>`;
             }
             if (c.col === 'title') {
               // Compact — no art thumbnail on desktop
@@ -3446,7 +3463,12 @@ function setMS(song) {
             if (c.col === 'dateadded') return `<div class="sd">${fmtDate(getMeta(song.id).dateAdded || song.modified * 1000)}</div>`;
             if (c.col === 'star') return `<div class="s-flag-col star-btn${starred ? ' on' : ''}" data-id="${song.id}">${starSvg}</div>`;
             if (c.col === '_cache') return `<div class="sdl${isCached ? ' cached' : ''}">${cacheSvg}</div>`;
-            if (c.col === '_remove') return `<div class="sq-remove" data-id="${song.id}" title="Remove from queue" style="display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.4;transition:opacity .1s"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`;
+            if (c.col === '_remove') return `<div class="sq-remove" data-id="${song.id}" title="Remove from queue"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>`;
+            if (c.col === '_addpl') {
+              const lastPl = pls[pls.length - 1];
+              const tip = lastPl ? `Add to "${lastPl.name}"` : 'Add to Playlist';
+              return `<div class="sq-addpl" data-id="${song.id}" title="${esc(tip)}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>`;
+            }
             return `<div></div>`;
           });
           row.innerHTML = cells.join('');
@@ -3459,6 +3481,10 @@ function setMS(song) {
             if (albumGoto) albumGoto.addEventListener('click', e => { e.stopPropagation(); goToAlbum(song.album, song.artist); });
           }
 
+          // Quick-add to playlist button
+          const addplEl = row.querySelector('.sq-addpl');
+          if (addplEl) addplEl.addEventListener('click', e => { e.stopPropagation(); quickAddToPlaylist(song.id); });
+
           // Cache click
           const cacheEl = row.querySelector('.sdl');
           if (cacheEl) cacheEl.addEventListener('click', e => { e.stopPropagation(); isCached ? uncache(song.id) : cacheSong(song.id); });
@@ -3466,20 +3492,14 @@ function setMS(song) {
           // Remove from Up Next queue
           const removeEl = row.querySelector('.sq-remove');
           if (removeEl) {
-            removeEl.addEventListener('mouseenter', () => { removeEl.style.opacity = '1'; });
-            removeEl.addEventListener('mouseleave', () => { removeEl.style.opacity = '.4'; });
             removeEl.addEventListener('click', e => {
               e.stopPropagation();
               const idx = queue.indexOf(song.id);
               if (idx < 0) return;
-              // If removing the currently playing song, don't remove — that would be confusing
               if (song.id === playingId) { toast('Cannot remove currently playing song'); return; }
               queue.splice(idx, 1);
-              // Adjust qi if removed item was before current position
               if (idx < qi) qi--;
-              clearPrefetch();
-              updCounts();
-              renderList();
+              clearPrefetch(); updCounts(); renderList();
               console.log(`[Queue] Removed id=${song.id}, queue now ${queue.length} songs`);
             });
           }
@@ -3587,6 +3607,71 @@ function setMS(song) {
         row.addEventListener('touchend', () => clearTimeout(pressTimer), { passive: true });
         row.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
 
+        // Mobile swipe gestures
+        if (window.innerWidth <= 700) {
+          let swipeStartX = 0, swipeStartY = 0;
+          row.addEventListener('touchstart', e => {
+            swipeStartX = e.touches[0].clientX;
+            swipeStartY = e.touches[0].clientY;
+          }, { passive: true });
+          row.addEventListener('touchend', e => {
+            const dx = e.changedTouches[0].clientX - swipeStartX;
+            const dy = Math.abs(e.changedTouches[0].clientY - swipeStartY);
+            if (dy > 30) return; // not a horizontal swipe
+            // Swipe LEFT → remove from Up Next or from Playlist
+            if (dx < -60 && (isUpNext || isPlaylist)) {
+              // Dismiss any existing swipe actions
+              document.querySelectorAll('.swipe-action').forEach(el => el.remove());
+              if (isUpNext) {
+                if (song.id === playingId) { toast('Cannot remove currently playing song'); return; }
+                const btn = document.createElement('div');
+                btn.className = 'swipe-action swipe-remove';
+                btn.textContent = 'Remove';
+                btn.addEventListener('click', e2 => {
+                  e2.stopPropagation();
+                  const idx = queue.indexOf(song.id);
+                  if (idx >= 0) { queue.splice(idx, 1); if (idx < qi) qi--; clearPrefetch(); updCounts(); }
+                  renderList();
+                });
+                row.style.position = 'relative';
+                row.appendChild(btn);
+                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
+              } else if (isPlaylist) {
+                const pl = pls.find(p => String(p.id) === String(view));
+                if (!pl) return;
+                const btn = document.createElement('div');
+                btn.className = 'swipe-action swipe-remove';
+                btn.textContent = 'Remove';
+                btn.addEventListener('click', e2 => {
+                  e2.stopPropagation();
+                  pl.sids = pl.sids.filter(id => id !== String(song.id));
+                  pushPlaylists(); renderList();
+                });
+                row.style.position = 'relative';
+                row.appendChild(btn);
+                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
+              }
+            }
+            // Swipe RIGHT → add to last playlist (all views)
+            if (dx > 60 && !isUpNext) {
+              document.querySelectorAll('.swipe-action').forEach(el => el.remove());
+              const lastPl = pls[pls.length - 1];
+              const plName = lastPl ? lastPl.name : 'New Playlist';
+              const btn = document.createElement('div');
+              btn.className = 'swipe-action swipe-add';
+              btn.textContent = `+ ${plName}`;
+              btn.addEventListener('click', async e2 => {
+                e2.stopPropagation();
+                await quickAddToPlaylist(song.id);
+                btn.remove();
+              });
+              row.style.position = 'relative';
+              row.appendChild(btn);
+              setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
+            }
+          }, { passive: true });
+        }
+
         frag.appendChild(row);
       });
       list.innerHTML = ''; list.appendChild(frag);
@@ -3659,15 +3744,47 @@ function setMS(song) {
       pls.forEach(pl => {
         const el = document.createElement('div');
         el.className = 'ni' + (String(view) === String(pl.id) ? ' active' : ''); el.dataset.view = pl.id;
-        el.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg><span>${esc(pl.name)}</span><span class="pldel" data-id="${pl.id}">×</span>`;
-        el.addEventListener('click', e => { if (e.target.classList.contains('pldel')) { delPl(pl.id); return; } switchView(pl.id); closeSidebar(); });
+        el.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg><span class="pl-name">${esc(pl.name)}</span>`;
+        el.addEventListener('click', () => { switchView(pl.id); closeSidebar(); });
+        el.addEventListener('contextmenu', e => { e.preventDefault(); showPlCtx(e.clientX, e.clientY, pl.id); });
+        // Long-press for mobile
+        let plPressTimer;
+        el.addEventListener('touchstart', () => { plPressTimer = setTimeout(() => showPlCtx(60, el.getBoundingClientRect().bottom, pl.id), 600); }, { passive: true });
+        el.addEventListener('touchend', () => clearTimeout(plPressTimer), { passive: true });
+        el.addEventListener('touchmove', () => clearTimeout(plPressTimer), { passive: true });
         nav.appendChild(el);
       });
     }
 
+    const VIEW_NAMES = {
+      'all':             'Songs',
+      'cached':          'Offline Cache',
+      'upnext':          'Up Next',
+      'recently-added':  'Recently Added',
+      'recently-played': 'Recently Played',
+      'most-played':     'Most Played',
+      'most-skipped':    'Most Skipped',
+      'never-played':    'Never Played',
+      'starred':         'Loved',
+    };
+    function viewDisplayName(v) {
+      if (VIEW_NAMES[v]) return VIEW_NAMES[v];
+      const pl = pls.find(p => String(p.id) === String(v));
+      return pl ? pl.name : 'Music';
+    }
+
     function switchView(v) {
       view = v;
+      // Clear search on view change
+      sq = '';
+      const searchEl = document.getElementById('search');
+      if (searchEl) searchEl.value = '';
+      const mobSearchEl = document.getElementById('mob-search-input');
+      if (mobSearchEl) { mobSearchEl.value = ''; closeMobSearch(); }
       document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', String(el.dataset.view) === String(v)));
+      // Update mobile toolbar title
+      const brand = document.getElementById('tb-brand');
+      if (brand) brand.textContent = viewDisplayName(v);
       // Browsing never rebuilds the queue — queue is frozen at playSong time
       renderList(); renderSB();
     }
@@ -3745,9 +3862,29 @@ function setMS(song) {
       const sidStr = String(sid);
       if (pl.sids.map(String).includes(sidStr)) { toast('Already in playlist'); return; }
       pl.sids.push(sidStr);
+      lastUsedPlId = String(plId);
       if (String(view) === String(plId)) { rebuildQ(); renderList(); }
       toast(`Added to "${pl.name}"`);
       await pushPlaylists();
+    }
+
+    let lastUsedPlId = null; // track last playlist used for quick-add
+
+    async function quickAddToPlaylist(songId) {
+      // Find target playlist: last used, or last in list, or auto-create
+      let pl = (lastUsedPlId && pls.find(p => String(p.id) === lastUsedPlId))
+            || pls[pls.length - 1];
+      if (!pl) {
+        // No playlists exist — auto-create "New Playlist"
+        pl = { id: genId(), name: 'New Playlist', sids: [], created: Date.now() };
+        pls.push(pl);
+        renderSB();
+        await pushPlaylists();
+        toast(`Created "New Playlist"`);
+      }
+      await addToPl(pl.id, songId);
+      // Re-render so the + button title updates
+      renderList();
     }
 
 
@@ -3862,9 +3999,21 @@ function setMS(song) {
       goSepEl.style.display    = (hasArtist || hasAlbum) ? '' : 'none';
       if (hasArtist) goArtistEl.textContent = `Go to Artist: ${song.artist}`;
       if (hasAlbum)  goAlbumEl.textContent  = `Go to Album: ${song.album}`;
-      pi.innerHTML = pls.map(pl => `<div class="ci" data-plid="${pl.id}">Add to "${esc(pl.name)}"</div>`).join('');
+      const inThisPlaylist = pls.some(p => String(p.id) === String(view));
+      if (inThisPlaylist) {
+        // In a playlist view — show Remove option for this playlist only
+        const thisPl = pls.find(p => String(p.id) === String(view));
+        pi.innerHTML = thisPl ? `<div class="ci danger" data-plid="${thisPl.id}" data-action="remove">Remove from "${esc(thisPl.name)}"</div>` : '';
+        pi.querySelectorAll('.ci').forEach(el => el.addEventListener('click', () => {
+          const pl = pls.find(p => String(p.id) === String(el.dataset.plid));
+          if (pl) { pl.sids = pl.sids.filter(id => id !== String(ctxId)); pushPlaylists(); renderList(); }
+          hideCtx();
+        }));
+      } else {
+        pi.innerHTML = pls.map(pl => `<div class="ci" data-plid="${pl.id}">Add to "${esc(pl.name)}"</div>`).join('');
+        pi.querySelectorAll('.ci').forEach(el => el.addEventListener('click', () => { addToPl(el.dataset.plid, ctxId); hideCtx(); }));
+      }
       ps.style.display = pls.length ? '' : 'none';
-      pi.querySelectorAll('.ci').forEach(el => el.addEventListener('click', () => { addToPl(el.dataset.plid, ctxId); hideCtx(); }));
       const mw = menu.offsetWidth || 180, mh = 200;
       menu.style.left = Math.min(x, window.innerWidth - mw - 8) + 'px';
       menu.style.top = Math.min(y, window.innerHeight - mh - 8) + 'px';
@@ -3884,12 +4033,41 @@ function setMS(song) {
     });
     document.getElementById('ctx-star').addEventListener('click', () => { if (ctxId) toggleStar(ctxId); hideCtx(); });
     document.getElementById('ctx-cache').addEventListener('click', () => { if (ctxId) { cachedIds.has(ctxId) ? uncache(ctxId) : cacheSong(ctxId); } hideCtx(); });
+    document.getElementById('ctx-cache-view').addEventListener('click', () => { cacheView(); hideCtx(); });
     document.getElementById('ctx-uncache').addEventListener('click', () => { if (ctxId) uncache(ctxId); hideCtx(); });
     document.getElementById('ctx-goto-artist').addEventListener('click', () => { if (ctxId) { const s = songs.find(x => x.id === ctxId); if (s) goToArtist(s.artist); } hideCtx(); });
     document.getElementById('ctx-goto-album').addEventListener('click',  () => { if (ctxId) { const s = songs.find(x => x.id === ctxId); if (s) goToAlbum(s.album, s.artist); } hideCtx(); });
     document.addEventListener('click', hideCtx);
 
-    // ── GO TO ARTIST / ALBUM ──────────────────────────────────────────────────────
+    // ── PLAYLIST CONTEXT MENU ────────────────────────────────────────────────────
+    let plCtxId = null;
+    function showPlCtx(x, y, plId) {
+      plCtxId = plId;
+      const menu = document.getElementById('pl-ctx');
+      menu.style.display = 'block';
+      menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+      menu.style.top  = Math.min(y, window.innerHeight - 80) + 'px';
+    }
+    function hidePlCtx() { document.getElementById('pl-ctx').style.display = 'none'; }
+    function renamePl(plId) {
+      const pl = pls.find(p => String(p.id) === String(plId));
+      if (!pl) return;
+      openModal('Rename Playlist', pl.name, async newName => {
+        if (!newName.trim()) return;
+        pl.name = newName.trim();
+        renderSB();
+        // Update mobile title if this playlist is current view
+        if (String(view) === String(plId)) {
+          const brand = document.getElementById('tb-brand');
+          if (brand) brand.textContent = pl.name;
+        }
+        await pushPlaylists();
+        toast(`Renamed to "${pl.name}"`);
+      });
+    }
+    document.getElementById('pl-ctx-rename').addEventListener('click', () => { if (plCtxId) renamePl(plCtxId); hidePlCtx(); });
+    document.getElementById('pl-ctx-delete').addEventListener('click', () => { if (plCtxId) delPl(plCtxId); hidePlCtx(); });
+    document.addEventListener('click', e => { if (!e.target.closest('#pl-ctx')) hidePlCtx(); });
     function goToArtist(artist) {
       if (!artist) return;
       // Switch to Songs view, set search to artist name
@@ -3973,54 +4151,40 @@ function setMS(song) {
       if (e.key === 'Escape') { if (bulkMode) { exitBulkMode(); renderList(); } else closeNPPanel(); }
     });
 
-    // ── MOBILE SEARCH ─────────────────────────────────────────────────────────────
+    // ── MOBILE SEARCH (inline in player bar) ─────────────────────────────────────
     function openMobSearch() {
-      document.getElementById('mob-search-bar').classList.add('open');
-      setTimeout(() => document.getElementById('mob-search').focus(), 80);
+      document.getElementById('mob-player-inner').style.display = 'none';
+      const inline = document.getElementById('mob-search-inline');
+      inline.style.display = 'flex';
+      inline.classList.add('open');
+      setTimeout(() => document.getElementById('mob-search-input').focus(), 60);
     }
     function closeMobSearch() {
-      document.getElementById('mob-search-bar').classList.remove('open');
-      document.getElementById('mob-search').blur();
+      document.getElementById('mob-search-inline').style.display = 'none';
+      document.getElementById('mob-search-inline').classList.remove('open');
+      document.getElementById('mob-player-inner').style.display = 'flex';
+      document.getElementById('mob-search-input').blur();
     }
-    document.getElementById('mob-search-btn').addEventListener('click', () => {
-      if (sq) {
-        // Already has query — clear it
-        sq = '';
-        document.getElementById('mob-search').value = '';
-        document.getElementById('mob-search-clear').style.display = 'none';
-        document.getElementById('mob-search-btn').classList.remove('has-query');
-        closeMobSearch();
-        rebuildQ(); renderList();
-      } else {
-        openMobSearch();
-      }
+    document.getElementById('mob-search-trigger').addEventListener('click', e => {
+      e.stopPropagation(); openMobSearch();
     });
-    document.getElementById('mob-search').addEventListener('input', e => {
+    document.getElementById('mob-search-input').addEventListener('input', e => {
       sq = e.target.value;
-      document.getElementById('mob-search-clear').style.display = sq ? 'block' : 'none';
-      document.getElementById('mob-search-btn').classList.toggle('has-query', !!sq);
-      // Sync with desktop search too
       document.getElementById('search').value = sq;
-      rebuildQ(); renderList();
+      renderList();
     });
-    document.getElementById('mob-search-clear').addEventListener('click', () => {
+    document.getElementById('mob-search-input').addEventListener('blur', () => {
+      // Small delay so cancel button click registers before blur closes
+      setTimeout(() => {
+        if (document.activeElement !== document.getElementById('mob-search-input')) closeMobSearch();
+      }, 150);
+    });
+    document.getElementById('mob-search-cancel-btn').addEventListener('click', () => {
       sq = '';
-      document.getElementById('mob-search').value = '';
-      document.getElementById('mob-search-clear').style.display = 'none';
-      document.getElementById('mob-search-btn').classList.remove('has-query');
+      document.getElementById('mob-search-input').value = '';
       document.getElementById('search').value = '';
-      rebuildQ(); renderList();
-      document.getElementById('mob-search').focus();
-    });
-    document.getElementById('mob-search-cancel').addEventListener('click', () => {
       closeMobSearch();
-      // Don't clear the query — let user keep results but hide keyboard
-    });
-    // Close mob search when tapping outside
-    document.addEventListener('click', e => {
-      if (!e.target.closest('#mob-search-bar') && !e.target.closest('#mob-search-btn')) {
-        closeMobSearch();
-      }
+      renderList();
     });
 
     // ── SEARCH ────────────────────────────────────────────────────────────────────
@@ -4044,7 +4208,7 @@ function setMS(song) {
     });
 
     // ── SIDEBAR BUTTONS ───────────────────────────────────────────────────────────
-    document.getElementById('cache-view-btn').addEventListener('click', cacheView);
+    // cache-view-btn removed — now in context menu as ctx-cache-view
     document.getElementById('new-pl').addEventListener('click', () => openModal('New Playlist', 'My Playlist', createPl));
     document.getElementById('syncbtn').addEventListener('click', syncLib);
 
@@ -4093,7 +4257,7 @@ function setMS(song) {
       if (starBtn) { starBtn.style.color = loved ? '#e5143a' : ''; starBtn.querySelector('svg').setAttribute('fill', loved ? '#e5143a' : 'none'); starBtn.querySelector('svg').setAttribute('stroke', loved ? '#e5143a' : 'currentColor'); }
     }
     document.getElementById('np-star').addEventListener('click', () => { const cs = curSong(); if (cs) toggleStar(cs.id); });
-    document.getElementById('np-show-in-songs').addEventListener('click', () => showInLibrary());
+    document.getElementById('np-show-in-songs').addEventListener('click', () => { closeNPPanel(); showInLibrary(); });
 
     // ── INIT ──────────────────────────────────────────────────────────────────────
     async function init() {
