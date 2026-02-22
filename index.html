@@ -430,8 +430,12 @@
       cursor: default;
       transition: background .05s;
       border-bottom: 1px solid transparent;
-      position: relative;   /* anchor for swipe-action-btn */
-      overflow: hidden;     /* clip button until row is translated */
+    }
+
+    /* Swipe wrapper — clips the sliding row so button is hidden until swiped */
+    .sw-wrap {
+      position: relative;
+      overflow: hidden;
     }
 
     /* .sr:hover removed — iTunes-style, no hover highlight */
@@ -1938,7 +1942,7 @@
     .sr:hover .sn-removable .sn-x { display: flex; }
     .sn-removable:hover .sn-x { color: var(--danger, #e5143a); }
     /* Mobile swipe action buttons */
-    /* iOS-style swipe action button — sits behind row, revealed by translateX */
+    /* iOS-style swipe action button — sibling of .sr inside .sw-wrap, revealed by row translateX */
     .swipe-action-btn {
       position: absolute;
       top: 0; right: 0; bottom: 0;
@@ -1950,6 +1954,7 @@
       cursor: pointer;
       white-space: nowrap;
       padding: 0 16px;
+      /* width set inline — matches ACTION_W in JS */
     }
     /* Quick-add to playlist button — hover only */
     .sq-addpl {
@@ -3841,25 +3846,31 @@ function setMS(song) {
 
         // iOS-style swipe-left to reveal action button at right edge
         if (window.innerWidth <= 700) {
-          const ACTION_W = 80; // width of revealed action button
-          const THRESHOLD = ACTION_W * 0.6; // commit threshold
-          let swStartX = 0, swStartY = 0, swCurX = 0, swTracking = false, swOpen = false;
-          // Determine which action this view gets
+          const ACTION_W = 80;
+          const THRESHOLD = ACTION_W * 0.6;
+          let swStartX = 0, swStartY = 0, swTracking = false, swOpen = false;
+
           const swipeIsRemove = isUpNext || isPlaylist;
           const swipeLabel = swipeIsRemove ? 'Remove' : (() => {
             const lp = (lastUsedPlId && pls.find(p => String(p.id) === lastUsedPlId)) || pls[pls.length - 1];
             return lp ? `+ ${lp.name}` : '+ Playlist';
           })();
 
-          // Build the action button (hidden behind row, anchored right)
+          // Wrapper clips the sliding row — button is a sibling inside the wrapper
+          const wrap = document.createElement('div');
+          wrap.className = 'sw-wrap';
+
           const actionBtn = document.createElement('div');
           actionBtn.className = 'swipe-action-btn ' + (swipeIsRemove ? 'swipe-remove' : 'swipe-add');
           actionBtn.textContent = swipeLabel;
           actionBtn.style.width = ACTION_W + 'px';
-          row.appendChild(actionBtn);
+
+          // Order matters: button first (behind), row on top
+          wrap.appendChild(actionBtn);
+          wrap.appendChild(row);
 
           function swipeReset(animate) {
-            if (animate) { row.style.transition = 'transform .2s'; }
+            if (animate) row.style.transition = 'transform .2s';
             row.style.transform = 'translateX(0)';
             swOpen = false;
             setTimeout(() => { row.style.transition = ''; }, 200);
@@ -3892,47 +3903,43 @@ function setMS(song) {
           row.addEventListener('touchstart', e => {
             swStartX = e.touches[0].clientX;
             swStartY = e.touches[0].clientY;
-            swCurX = swStartX;
             swTracking = false;
           }, { passive: true });
 
           row.addEventListener('touchmove', e => {
             const dx = e.touches[0].clientX - swStartX;
             const dy = Math.abs(e.touches[0].clientY - swStartY);
-            swCurX = e.touches[0].clientX;
-            // Decide if this is a horizontal swipe
             if (!swTracking) {
               if (Math.abs(dx) < 6 && dy < 6) return;
-              if (dy > Math.abs(dx)) return; // vertical — ignore
+              if (dy > Math.abs(dx)) return;
               swTracking = true;
             }
             if (!swTracking) return;
-            // Only allow leftward swipe (or right to close if open)
             if (swOpen) {
-              const close = Math.min(0, dx - ACTION_W); // can swipe back right
-              row.style.transform = `translateX(${Math.max(-ACTION_W, close - ACTION_W)}px)`;
-            } else {
-              const offset = Math.min(0, dx); // clamp to 0..-ACTION_W
+              const offset = Math.min(0, dx) - ACTION_W;
               row.style.transform = `translateX(${Math.max(-ACTION_W, offset)}px)`;
+            } else {
+              row.style.transform = `translateX(${Math.max(-ACTION_W, Math.min(0, dx))}px)`;
             }
           }, { passive: true });
 
           row.addEventListener('touchend', e => {
             if (!swTracking) return;
             const totalDx = e.changedTouches[0].clientX - swStartX;
-            if (swOpen && totalDx > 20) { swipeReset(true); return; }
-            if (Math.abs(totalDx) > THRESHOLD && totalDx < 0) swipeCommit();
-            else swipeReset(true);
+            if (swOpen && totalDx > 20) { swipeReset(true); }
+            else if (Math.abs(totalDx) > THRESHOLD && totalDx < 0) { swipeCommit(); }
+            else { swipeReset(true); }
             swTracking = false;
           }, { passive: true });
 
-          // Close swipe when another row is swiped
           document.addEventListener('touchstart', e => {
-            if (swOpen && !row.contains(e.target)) swipeReset(true);
+            if (swOpen && !wrap.contains(e.target)) swipeReset(true);
           }, { passive: true });
-        }
 
-        frag.appendChild(row);
+          frag.appendChild(wrap);
+        } else {
+          frag.appendChild(row);
+        }
       });
       list.innerHTML = ''; list.appendChild(frag);
       updateStatusBar(s);
