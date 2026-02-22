@@ -438,6 +438,13 @@
       overflow: hidden;
     }
 
+    /* Row inside a swipe wrapper must have a solid background to cover the hidden action button */
+    .sw-wrap > .sr {
+      background: var(--bg);
+      position: relative; /* ensure it stacks above the absolute-positioned button */
+      z-index: 1;
+    }
+
     /* .sr:hover removed — iTunes-style, no hover highlight */
     .sr.sel {
       background: var(--sel-bg) !important;
@@ -1376,7 +1383,7 @@
         background: var(--bg3);
         border-radius: 6px;
         flex-shrink: 0;
-        display: flex;
+        display: none; /* hidden by default — shown by JS only when real artwork is available */
         align-items: center;
         justify-content: center;
         overflow: hidden;
@@ -1943,9 +1950,12 @@
     .sn-removable:hover .sn-x { color: var(--danger, #e5143a); }
     /* Mobile swipe action buttons */
     /* iOS-style swipe action button — sibling of .sr inside .sw-wrap, revealed by row translateX */
+    /* The button starts offset to the RIGHT, outside the visible area, clipped by overflow:hidden.
+       When the row slides left by ACTION_W px, the button slides into view from the right. */
     .swipe-action-btn {
       position: absolute;
-      top: 0; right: 0; bottom: 0;
+      top: 0; bottom: 0;
+      right: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -2342,13 +2352,7 @@
     </div>
     <!-- Normal player content -->
     <div id="mob-player-inner">
-      <div id="mob-art">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M9 18V5l12-2v13" />
-          <circle cx="6" cy="18" r="3" />
-          <circle cx="18" cy="16" r="3" />
-        </svg>
-      </div>
+      <div id="mob-art" style="display:none"></div>
       <div id="mob-info">
         <div id="mob-np-t">Not playing</div>
         <div id="mob-np-a">—</div>
@@ -2622,6 +2626,148 @@
     let _standbyUrl  = null;     // blob URL created for standby (if any)
     const BASE_VOLUME = 0.85;
 
+    // ── WEB AUDIO GAPLESS ENGINE ─────────────────────────────────────────────────
+    // The HTMLAudioElement ping-pong approach still has a gap because browsers
+    // don't trim encoder delay/padding from MP3/AAC, and .play() has scheduling
+    // jitter. True gapless requires the Web Audio API:
+    //   1. Fetch the next track's bytes, decodeAudioData() → AudioBuffer (raw PCM).
+    //   2. Schedule it to start at AudioContext.currentTime + remaining time of
+    //      current track (minus encoder padding, plus next track's delay offset).
+    //
+    // This engine runs in PARALLEL with the HTML audio element for UI/seeking.
+    // The HTML element is kept muted when Web Audio takes over so we don't double-play.
+    // Fallback: if Web Audio isn't available or decoding fails, HTML audio handles it.
+    let _wac = null; // AudioContext — created lazily on first user interaction
+    let _wacGain = null;
+    let _wacCurSource = null;    // currently playing AudioBufferSourceNode
+    let _wacNextSource = null;   // pre-scheduled next AudioBufferSourceNode
+    let _wacCurSongId = null;
+    let _wacNextSongId = null;
+    let _wacCurBuffer = null;
+    let _wacNextBuffer = null;
+    let _wacCurStartAt = 0;      // AudioContext time when current track started
+    let _wacCurStartOffset = 0;  // how many seconds into the buffer playback started
+    let _wacActive = false;      // true when WebAudio is driving playback
+    let _wacFetchingNextId = null;
+    const WAC_PREFETCH_SECS = 20; // start fetching next track this many seconds before end
+
+    function _wacInit() {
+      if (_wac) return true;
+      try {
+        _wac = new (window.AudioContext || window.webkitAudioContext)();
+        _wacGain = _wac.createGain();
+        _wacGain.connect(_wac.destination);
+        return true;
+      } catch { return false; }
+    }
+
+    function _wacRgGain(song) {
+      const rg = song?.rg_track ?? null;
+      if (rg === null) return BASE_VOLUME;
+      return Math.min(1.0, Math.max(0.05, BASE_VOLUME * Math.pow(10, (rg + RG_PREAMP_DB) / 20)));
+    }
+
+    // Returns the encoder delay in seconds for a song (default 0 if unknown)
+    function _encDelay(song) {
+      const d = song?.encoder_delay;
+      if (!d || !song?.sample_rate) return 0;
+      return d / (song.sample_rate || 44100);
+    }
+    function _encPadding(song) {
+      const p = song?.encoder_padding;
+      if (!p || !song?.sample_rate) return 0;
+      return p / (song.sample_rate || 44100);
+    }
+
+    // Fetch audio bytes for a song and decode to AudioBuffer
+    async function _wacFetchBuffer(song) {
+      const cached = await iget('blobs', song.id);
+      let ab;
+      if (cached?.blob) {
+        ab = await cached.blob.arrayBuffer();
+      } else if (online && cfg.url) {
+        const url = await streamUrl(song);
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('fetch ' + r.status);
+        ab = await r.arrayBuffer();
+      } else { throw new Error('offline and not cached'); }
+      return _wac.decodeAudioData(ab);
+    }
+
+    // Play a decoded AudioBuffer now (or at a scheduled time), muting the HTML element
+    function _wacPlayBuffer(buffer, song, startOffset, scheduleAt) {
+      if (_wacCurSource) { try { _wacCurSource.stop(); } catch {} }
+      _wacCurSource = _wac.createBufferSource();
+      _wacCurSource.buffer = buffer;
+      _wacGain.gain.value = _wacRgGain(song);
+      _wacCurSource.connect(_wacGain);
+
+      // Trim encoder delay from start; trim padding from end (set loop end)
+      const delay = _encDelay(song);
+      const offset = startOffset + delay;
+      const trimmedDuration = buffer.duration - delay - _encPadding(song);
+
+      _wacCurSource.start(scheduleAt ?? _wac.currentTime, offset, trimmedDuration - startOffset);
+      _wacCurStartAt = scheduleAt ?? _wac.currentTime;
+      _wacCurStartOffset = startOffset;
+      _wacCurSongId = song.id;
+      _wacCurBuffer = buffer;
+      _wacActive = true;
+
+      // When this source ends, advance to next (if pre-scheduled via _wacScheduleNext)
+      _wacCurSource.onended = () => {
+        if (_wacCurSongId !== song.id) return; // stale
+        if (!_wacNextSource) { _wacActive = false; }
+      };
+    }
+
+    // Pre-schedule the next track to start exactly when current ends (sample-accurate)
+    async function _wacScheduleNext(nextSong, currentEndTime) {
+      if (!_wac || !_wacActive) return;
+      if (_wacFetchingNextId === nextSong.id) return; // already fetching
+      _wacFetchingNextId = nextSong.id;
+      try {
+        const buf = await _wacFetchBuffer(nextSong);
+        if (!_wacActive || _wacFetchingNextId !== nextSong.id) return; // cancelled
+        _wacNextBuffer = buf;
+        _wacNextSongId = nextSong.id;
+        if (_wacNextSource) { try { _wacNextSource.stop(); } catch {} }
+        _wacNextSource = _wac.createBufferSource();
+        _wacNextSource.buffer = buf;
+        _wacNextSource.connect(_wacGain);
+        const delay = _encDelay(nextSong);
+        const trimmedDuration = buf.duration - delay - _encPadding(nextSong);
+        // Schedule to start at current track's end, offset past encoder delay
+        _wacNextSource.start(currentEndTime, delay, trimmedDuration);
+        console.log(`[WebAudio] Scheduled "${nextSong.title}" at t=${currentEndTime.toFixed(3)}, encoderDelay=${(delay*1000).toFixed(1)}ms`);
+      } catch (e) {
+        _wacFetchingNextId = null;
+        console.warn('[WebAudio] prefetch failed:', e);
+      }
+    }
+
+    // Called when Web Audio transitions to the next track (from _wacNextSource.onended handoff)
+    function _wacPromoteNext(nextSong) {
+      _wacCurSource = _wacNextSource;
+      _wacCurSongId = nextSong.id;
+      _wacCurBuffer = _wacNextBuffer;
+      _wacNextSource = null; _wacNextBuffer = null; _wacNextSongId = null;
+      _wacFetchingNextId = null;
+    }
+
+    function _wacStop() {
+      if (_wacCurSource) { try { _wacCurSource.stop(); } catch {} _wacCurSource = null; }
+      if (_wacNextSource) { try { _wacNextSource.stop(); } catch {} _wacNextSource = null; }
+      _wacActive = false; _wacCurSongId = null; _wacNextSongId = null;
+      _wacCurBuffer = null; _wacNextBuffer = null; _wacFetchingNextId = null;
+    }
+
+    // Returns current playback position via WebAudio clock (more accurate than aud.currentTime)
+    function _wacCurrentTime() {
+      if (!_wacActive || !_wac) return null;
+      return _wacCurStartOffset + (_wac.currentTime - _wacCurStartAt);
+    }
+
     // ── REPLAYGAIN VOLUME NORMALISATION ──────────────────────────────────────────
     // Applies REPLAYGAIN_TRACK_GAIN dB offset to bring songs to ~89 dBFS target.
     // Preamp of -1 dB reduces risk of clipping after normalisation.
@@ -2649,6 +2795,8 @@
       kaEl.play().catch(() => { _kaUnlocked = false; });
       // Also prime both audio elements so iOS allows future .play() calls
       _audEls.forEach(a => { if (!a.src) { a.volume = 0; a.src = SILENT_MP3; a.play().catch(()=>{}); a.pause(); a.src = ''; a.volume = BASE_VOLUME; } });
+      // Resume WebAudio context if it was auto-suspended (iOS requires user gesture)
+      if (_wac && _wac.state === 'suspended') _wac.resume().catch(() => {});
     }
 
     // Start keepalive on any real audio element play event
@@ -3020,6 +3168,9 @@
       if (newQi >= 0) qi = newQi;
       playingId = id;
 
+      // Stop any existing WebAudio playback (user-initiated track changes)
+      _wacStop();
+
       // ── GAPLESS PING-PONG PATH ────────────────────────────────────────────────
       // If standby element already has this song buffered, swap instantly.
       const sbEl = _audEls[1 - _activeIdx];
@@ -3069,6 +3220,27 @@
         }
       }
 
+      // ── WEB AUDIO GAPLESS: decode current track in background ────────────────
+      // Once we have the HTML element playing (for instant start), decode the
+      // same audio into WebAudio so we can sample-accurately schedule the next.
+      if (auto && playing && _wacInit()) {
+        (async () => {
+          try {
+            const buf = await _wacFetchBuffer(song);
+            if (playingId !== id) return; // track changed before we decoded
+            // Seek to match HTML element's current position
+            const seek = aud.currentTime || 0;
+            // Mute HTML audio — WebAudio will drive the actual sound
+            aud.volume = 0;
+            _wacPlayBuffer(buf, song, seek, null);
+            console.log(`[WebAudio] Took over "${song.title}" at seek=${seek.toFixed(2)}s`);
+          } catch (e) {
+            // WebAudio failed — HTML element continues (already audible)
+            console.warn('[WebAudio] Decode failed, HTML audio continues:', e.message);
+          }
+        })();
+      }
+
       updateAllNP(song);
       setMS(song);
       renderList();
@@ -3097,12 +3269,14 @@
       } else {
         artWrap.style.display = 'none';
       }
-      // Mobile strip art
+      // Mobile strip art — only visible when real artwork is available
       const mobArt = document.getElementById('mob-art');
       if (m.albumArtUrl) {
-        mobArt.innerHTML = `<img src="${m.albumArtUrl}" style="width:42px;height:42px;border-radius:6px;object-fit:cover;display:block" onerror="this.parentNode.innerHTML='<div class=\\'art-placeholder\\' style=\\'width:42px;height:42px;border-radius:6px\\'><svg width=\\'22\\' height=\\'22\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' style=\\'opacity:.3\\'><path d=\\'M9 18V5l12-2v13\\'/><circle cx=\\'6\\' cy=\\'18\\' r=\\'3\\'/><circle cx=\\'18\\' cy=\\'16\\' r=\\'3\\'/></svg></div>'">`;
+        mobArt.style.display = 'flex';
+        mobArt.innerHTML = `<img src="${m.albumArtUrl}" style="width:42px;height:42px;border-radius:6px;object-fit:cover;display:block" onerror="this.parentNode.style.display='none';this.parentNode.innerHTML=''">`;
       } else {
-        mobArt.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+        mobArt.style.display = 'none';
+        mobArt.innerHTML = '';
       }
       // Mobile full-screen panel art
       const panelArt = document.getElementById('np-panel-art');
@@ -3181,8 +3355,14 @@ function setMS(song) {
     artwork
   });
 
-  navigator.mediaSession.setActionHandler('play', () => { aud.play(); playing = true; updPBtn(); pushNowPlaying(curSong()); });
-  navigator.mediaSession.setActionHandler('pause', () => { aud.pause(); playing = false; updPBtn(); pushNowPlaying(curSong()); });
+  navigator.mediaSession.setActionHandler('play', () => {
+    if (_wacActive && _wac && _wac.state === 'suspended') { _wac.resume().catch(()=>{}); playing = true; updPBtn(); pushNowPlaying(curSong()); }
+    else { aud.play(); playing = true; updPBtn(); pushNowPlaying(curSong()); }
+  });
+  navigator.mediaSession.setActionHandler('pause', () => {
+    if (_wacActive && _wac) { _wac.suspend().catch(()=>{}); }
+    aud.pause(); playing = false; updPBtn(); pushNowPlaying(curSong());
+  });
   navigator.mediaSession.setActionHandler('previoustrack', () => playPrev(true));
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
   navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) aud.currentTime = d.seekTime; });
@@ -3229,7 +3409,33 @@ function setMS(song) {
     function _onEnded() {
       if (rep === 2) { aud.currentTime = 0; aud.play(); return; }
 
-      // ── GAPLESS fast path ─────────────────────────────────────────────────────
+      // ── WEBAUDIO path: if next track is already pre-scheduled, just update UI ─
+      if (_wacActive && _wacNextSongId) {
+        const nextQi = shuf ? null : (qi + 1) % queue.length;
+        if (nextQi !== null) {
+          const nextId = queue[nextQi];
+          if (nextId === _wacNextSongId) {
+            const nextSong = songs.find(s => s.id === nextId);
+            _wacPromoteNext(nextSong);
+            qi = nextQi;
+            playingId = nextId;
+            // HTML element: load next src silently (for seeking/UI) but keep muted
+            prefetchNext(); // keep ping-pong warm too
+            if (nextSong) {
+              updateAllNP(nextSong);
+              setMS(nextSong);
+              renderList();
+              schedulePlayCount(nextId);
+              pushNowPlaying(nextSong);
+              updNPActions();
+              if (!getMeta(nextId).albumArtUrl) fetchArtForSong(nextSong).then(() => { updateAllNP(nextSong); setMS(nextSong); });
+            }
+            return; // WebAudio already playing — no gap
+          }
+        }
+      }
+
+      // ── HTML AUDIO GAPLESS fast path ────────────────────────────────────────
       // If standby element is already buffered for the next song, start it
       // *synchronously* right here — before any async/UI work — to minimize gap.
       const nextQi = shuf ? null : (qi + 1) % queue.length;
@@ -3285,18 +3491,38 @@ function setMS(song) {
     }
     function _onTimeUpdate() {
       if (!aud.duration) return;
-      const p = (aud.currentTime / aud.duration) * 100;
+      // Use WebAudio clock for display when active (more accurate)
+      const curTime = (_wacActive ? (_wacCurrentTime() ?? aud.currentTime) : aud.currentTime);
+      const dur = aud.duration;
+      const p = (curTime / dur) * 100;
       document.getElementById('pf').style.width = p + '%';
       document.getElementById('pt').style.left = p + '%';
-      document.getElementById('tc').textContent = fmt(aud.currentTime);
+      document.getElementById('tc').textContent = fmt(curTime);
       document.getElementById('mob-pf').style.width = p + '%';
       document.getElementById('np-panel-pf').style.width = p + '%';
-      document.getElementById('np-panel-cur').textContent = fmt(aud.currentTime);
+      document.getElementById('np-panel-cur').textContent = fmt(curTime);
       if (playing && Date.now() - lastNPPush > 15000 && curSong()) pushNowPlaying(curSong());
       if ('mediaSession' in navigator && navigator.mediaSession.setPositionState)
-        try { navigator.mediaSession.setPositionState({ duration: aud.duration, playbackRate: 1, position: aud.currentTime }); } catch {}
-      const remaining = aud.duration - aud.currentTime;
+        try { navigator.mediaSession.setPositionState({ duration: dur, playbackRate: 1, position: curTime }); } catch {}
+      const remaining = dur - curTime;
       if (!_prefetchId && (remaining < 25 || p > 75)) prefetchNext();
+
+      // ── WEBAUDIO: schedule next track when close to end ───────────────────────
+      if (_wacActive && _wac && !_wacNextSongId && !shuf && remaining < WAC_PREFETCH_SECS) {
+        const nextQi2 = (qi + 1) % queue.length;
+        const nextId2 = queue[nextQi2];
+        if (nextId2 && nextId2 !== playingId) {
+          const nextSong2 = songs.find(s => s.id === nextId2);
+          if (nextSong2) {
+            // Calculate when current track ends in AudioContext time
+            const song2 = curSong();
+            const delay = song2 ? _encDelay(song2) : 0;
+            const pad = song2 ? _encPadding(song2) : 0;
+            const endTime = _wacCurStartAt + (_wacCurBuffer ? _wacCurBuffer.duration - delay - pad - _wacCurStartOffset : remaining);
+            _wacScheduleNext(nextSong2, endTime);
+          }
+        }
+      }
     }
     function _onLoadedMeta() {
       document.getElementById('tt').textContent = fmt(aud.duration);
@@ -4462,14 +4688,28 @@ function setMS(song) {
     function wirePlayPause(btnId) {
       document.getElementById(btnId).addEventListener('click', () => {
         unlockAudioSession();
-        if (!aud.src) {
+        if (!aud.src && !_wacActive) {
           // No song loaded — freeze queue from current view and start first song
           freezeQueue(null);
           if (queue.length) { qi = 0; playSong(queue[0], true, false); } // queue already frozen
           return;
         }
-        if (playing) { _userPaused = true; aud.pause(); }
-        else { _userPaused = false; aud.play(); }
+        if (playing) {
+          _userPaused = true;
+          if (_wacActive && _wac) {
+            // Suspend AudioContext to pause WebAudio
+            _wac.suspend().catch(() => {});
+          }
+          aud.pause();
+        } else {
+          _userPaused = false;
+          if (_wacActive && _wac && _wac.state === 'suspended') {
+            _wac.resume().catch(() => {});
+            playing = true; updPBtn();
+          } else {
+            aud.play();
+          }
+        }
       });
     }
     function wireShuffle(btnId) {
