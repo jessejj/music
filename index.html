@@ -1688,6 +1688,16 @@
     }
 
     /* ═══════════════════════════════════════════════════
+   LARGE VIEWPORT — wider artist/album columns
+═══════════════════════════════════════════════════ */
+    @media (min-width: 1400px) {
+      :root {
+        --col-artist: 260px;
+        --col-album:  260px;
+      }
+    }
+
+    /* ═══════════════════════════════════════════════════
    THEME TOGGLE BUTTON
 ═══════════════════════════════════════════════════ */
     #theme-btn {
@@ -1755,10 +1765,11 @@
     }
 
     .art-placeholder {
-      width: 28px;
-      height: 28px;
-      border-radius: 3px;
+      width: 36px;
+      height: 36px;
+      border-radius: 4px;
       background: var(--bg3);
+      border: 1px solid var(--border);
       flex-shrink: 0;
       display: flex;
       align-items: center;
@@ -1766,7 +1777,8 @@
     }
 
     .art-placeholder svg {
-      opacity: .2;
+      opacity: .3;
+      color: var(--text3);
     }
 
     /* Now playing indicator dot in toolbar */
@@ -1908,19 +1920,34 @@
     }
     .sr:hover .sq-remove { opacity: 1; }
     .sq-remove:hover { color: var(--danger, #e5143a) !important; }
-    /* Mobile swipe action buttons */
-    .swipe-action {
+
+    /* Up Next num cell — × appears on row hover, number hides */
+    .sn-removable { cursor: pointer; position: relative; }
+    .sn-removable .sn-x {
+      display: none;
+      align-items: center;
+      justify-content: center;
       position: absolute;
-      top: 0; bottom: 0;
+      inset: 0;
+      color: var(--text3);
+    }
+    .sr:hover .sn-removable .snv,
+    .sr:hover .sn-removable .eqb { opacity: 0; }
+    .sr:hover .sn-removable .sn-x { display: flex; }
+    .sn-removable:hover .sn-x { color: var(--danger, #e5143a); }
+    /* Mobile swipe action buttons */
+    /* iOS-style swipe action button — sits behind row, revealed by translateX */
+    .swipe-action-btn {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
       display: flex;
       align-items: center;
-      padding: 0 18px;
+      justify-content: center;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      z-index: 5;
-      border-radius: 4px;
       white-space: nowrap;
+      padding: 0 16px;
     }
     /* Quick-add to playlist button — hover only */
     .sq-addpl {
@@ -1935,8 +1962,8 @@
     .sr:hover .sq-addpl { opacity: 1; }
     .sq-addpl:hover { color: var(--accent) !important; }
 
-    .swipe-remove { right: 0; background: #e5143a; color: #fff; }
-    .swipe-add    { left:  0; background: var(--accent); color: #fff; }
+    .swipe-remove { background: #e5143a; color: #fff; }
+    .swipe-add    { background: var(--accent); color: #fff; }
 
     .sa-goto, .sb-goto {
       display: flex;
@@ -2145,6 +2172,21 @@
           <circle cx="18" cy="16" r="3" />
         </svg>
         Songs <span class="badge" id="lib-ct">0</span>
+      </div>
+      <div class="ni" data-view="albums" id="nav-albums">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        Albums <span class="badge" id="albums-ct">0</span>
+      </div>
+      <div class="ni" data-view="singles" id="nav-singles">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="16"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        Singles <span class="badge" id="singles-ct">0</span>
       </div>
       <div class="ni" data-view="cached" id="nav-cached">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2533,6 +2575,8 @@
     // Default sort cols per view (overridable by clicking headers)
     const VIEW_DEFAULTS = {
       'all':             { col: 'artist', dir: 1 },
+      'albums':          { col: 'artist', dir: 1 },
+      'singles':         { col: 'artist', dir: 1 },
       'cached':          { col: 'artist', dir: 1 },
       'upnext':          { col: '_queue', dir: 1 },  // fixed queue order
       'recently-added':  { col: 'dateadded', dir: -1 },
@@ -2957,7 +3001,7 @@
       // Mobile strip art
       const mobArt = document.getElementById('mob-art');
       if (m.albumArtUrl) {
-        mobArt.innerHTML = `<img src="${m.albumArtUrl}" style="width:42px;height:42px;border-radius:6px;object-fit:cover;display:block" onerror="this.style.display='none'">`;
+        mobArt.innerHTML = `<img src="${m.albumArtUrl}" style="width:42px;height:42px;border-radius:6px;object-fit:cover;display:block" onerror="this.parentNode.innerHTML='<div class=\\'art-placeholder\\' style=\\'width:42px;height:42px;border-radius:6px\\'><svg width=\\'22\\' height=\\'22\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' style=\\'opacity:.3\\'><path d=\\'M9 18V5l12-2v13\\'/><circle cx=\\'6\\' cy=\\'18\\' r=\\'3\\'/><circle cx=\\'18\\' cy=\\'16\\' r=\\'3\\'/></svg></div>'">`;
       } else {
         mobArt.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
       }
@@ -3147,6 +3191,12 @@ function setMS(song) {
       document.getElementById('cache-ct').textContent = cachedIds.size;
       document.getElementById('lib-ct').textContent = songs.length;
       document.getElementById('upnext-ct').textContent = queue.length;
+      // Albums and singles counts
+      if (songs.length) {
+        const ids = getCompleteAlbumIds();
+        document.getElementById('albums-ct').textContent = ids.size;
+        document.getElementById('singles-ct').textContent = songs.length - ids.size;
+      }
     }
 
     // ── STATUS BAR (iTunes-style) ─────────────────────────────────────────────────
@@ -3236,6 +3286,32 @@ function setMS(song) {
       return arr;
     }
 
+    // ── ALBUM COMPLETENESS DETECTION ─────────────────────────────────────────────
+    // An album is "complete" if: grouped by artist+album, has ≥2 tracks,
+    // and track numbers form a consecutive sequence starting at 1 with no gaps.
+    // Returns a Set of song IDs that belong to complete albums.
+    function getCompleteAlbumIds() {
+      const groups = {};
+      for (const s of songs) {
+        if (!s.album || !s.track) continue;
+        const key = (s.artist || '').toLowerCase() + '|||' + s.album.toLowerCase();
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(s);
+      }
+      const ids = new Set();
+      for (const group of Object.values(groups)) {
+        if (group.length < 2) continue;
+        const tracks = group.map(s => s.track).sort((a, b) => a - b);
+        // Must start at 1, no gaps
+        let complete = tracks[0] === 1;
+        for (let i = 1; i < tracks.length && complete; i++) {
+          if (tracks[i] !== tracks[i - 1] + 1) complete = false;
+        }
+        if (complete) group.forEach(s => ids.add(s.id));
+      }
+      return ids;
+    }
+
     function getViewSongs() {
       const col = sortCol(), dir = sortDir();
       let s;
@@ -3248,6 +3324,8 @@ function setMS(song) {
       }
       if (view === 'cached') s = songs.filter(x => cachedIds.has(x.id));
       else if (view === 'all') s = [...songs];
+      else if (view === 'albums') { const ids = getCompleteAlbumIds(); s = songs.filter(x => ids.has(x.id)); }
+      else if (view === 'singles') { const ids = getCompleteAlbumIds(); s = songs.filter(x => !ids.has(x.id)); }
       else if (view === 'starred') s = songs.filter(x => isStarred(x.id));
       else if (view === 'never-played') s = songs.filter(x => !playCount(x.id));
       else if (view === 'most-played') s = [...songs].filter(x => playCount(x.id) > 0);
@@ -3291,8 +3369,8 @@ function setMS(song) {
       const removeCol= { col: '_remove',    svgLabel: '',              width: '20px',  align: 'center', noSort: true };
       const numCol   = { col: 'num',        label: '#',                width: '30px',  align: 'right' };
       const titleCol = { col: 'title',      label: 'Title',            width: '1fr'  };
-      const artistCol= { col: 'artist',     label: 'Artist',           width: '160px'  };
-      const albumCol = { col: 'album',      label: 'Album',            width: '160px'  };
+      const artistCol= { col: 'artist',     label: 'Artist',           width: 'var(--col-artist, 160px)'  };
+      const albumCol = { col: 'album',      label: 'Album',            width: 'var(--col-album, 160px)'  };
       const timeCol  = { col: 'duration',   label: 'Time',             width: '46px', align: 'right' };
       const starCol  = { col: 'star',       svgLabel: HEART_SVG,       width: '26px', align: 'center', noSort: false };
       const cacheCol = { col: '_cache',     svgLabel: CHECK_SVG,       width: '22px', align: 'center', noSort: true };
@@ -3304,8 +3382,10 @@ function setMS(song) {
 
       if (v === 'all' || v === 'cached')
         return [numCol, titleCol, timeCol, artistCol, albumCol, addplCol, starCol, cacheCol];
+      if (v === 'albums' || v === 'singles')
+        return [numCol, titleCol, timeCol, artistCol, albumCol, addplCol, starCol, cacheCol];
       if (v === 'upnext')
-        return [removeCol, numCol, titleCol, timeCol, artistCol, albumCol, starCol, cacheCol];
+        return [numCol, titleCol, timeCol, artistCol, albumCol, addplCol, starCol, cacheCol];
       if (v === 'recently-added')
         return [numCol, titleCol, timeCol, artistCol, daCol,    addplCol, starCol, cacheCol];
       if (v === 'recently-played')
@@ -3411,8 +3491,8 @@ function setMS(song) {
         const starSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${starred ? HEART_RED : 'none'}" stroke="${starred ? HEART_RED : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
         const cacheSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${isCached ? '<polyline points="20 6 9 17 4 12"/>' : DL_SVG}</svg>`;
         const artHtml = m.albumArtUrl
-          ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.style.display='none'">`
-          : `<div class="art-placeholder"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>`;
+          ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.parentNode.innerHTML='<div class=\\'art-placeholder\\'><svg width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\'><path d=\\'M9 18V5l12-2v13\\'/><circle cx=\\'6\\' cy=\\'18\\' r=\\'3\\'/><circle cx=\\'18\\' cy=\\'16\\' r=\\'3\\'/></svg></div>'">`
+          : `<div class="art-placeholder"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>`;
 
         // Track number: playlist/upnext = position in list, everything else = album track
         const trackNum = (isPlaylist || isUpNext) ? (i + 1) : (song.track || (i + 1));
@@ -3436,6 +3516,10 @@ function setMS(song) {
           // Build cells matching cols
           const cells = cols.map(c => {
             if (c.col === 'num') {
+              if (isUpNext && song.id !== playingId) {
+                // Up Next: hover shows × to remove, default shows track number
+                return `<div class="sn sn-removable" data-id="${song.id}" title="Remove from queue"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div><div class="sn-x"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div></div>`;
+              }
               return `<div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>`;
             }
             if (c.col === 'title') {
@@ -3485,24 +3569,23 @@ function setMS(song) {
           const addplEl = row.querySelector('.sq-addpl');
           if (addplEl) addplEl.addEventListener('click', e => { e.stopPropagation(); quickAddToPlaylist(song.id); });
 
-          // Cache click
-          const cacheEl = row.querySelector('.sdl');
-          if (cacheEl) cacheEl.addEventListener('click', e => { e.stopPropagation(); isCached ? uncache(song.id) : cacheSong(song.id); });
-
-          // Remove from Up Next queue
-          const removeEl = row.querySelector('.sq-remove');
-          if (removeEl) {
-            removeEl.addEventListener('click', e => {
+          // Up Next: remove via num cell click
+          const snRemovable = row.querySelector('.sn-removable');
+          if (snRemovable) {
+            snRemovable.addEventListener('click', e => {
               e.stopPropagation();
               const idx = queue.indexOf(song.id);
               if (idx < 0) return;
-              if (song.id === playingId) { toast('Cannot remove currently playing song'); return; }
               queue.splice(idx, 1);
               if (idx < qi) qi--;
               clearPrefetch(); updCounts(); renderList();
               console.log(`[Queue] Removed id=${song.id}, queue now ${queue.length} songs`);
             });
           }
+
+          // Cache click
+          const cacheEl = row.querySelector('.sdl');
+          if (cacheEl) cacheEl.addEventListener('click', e => { e.stopPropagation(); isCached ? uncache(song.id) : cacheSong(song.id); });
 
           // Drag-to-reorder for playlists and Up Next
           if (isPlaylist || isUpNext) {
@@ -3607,68 +3690,98 @@ function setMS(song) {
         row.addEventListener('touchend', () => clearTimeout(pressTimer), { passive: true });
         row.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
 
-        // Mobile swipe gestures
+        // iOS-style swipe-left to reveal action button at right edge
         if (window.innerWidth <= 700) {
-          let swipeStartX = 0, swipeStartY = 0;
-          row.addEventListener('touchstart', e => {
-            swipeStartX = e.touches[0].clientX;
-            swipeStartY = e.touches[0].clientY;
-          }, { passive: true });
-          row.addEventListener('touchend', e => {
-            const dx = e.changedTouches[0].clientX - swipeStartX;
-            const dy = Math.abs(e.changedTouches[0].clientY - swipeStartY);
-            if (dy > 30) return; // not a horizontal swipe
-            // Swipe LEFT → remove from Up Next or from Playlist
-            if (dx < -60 && (isUpNext || isPlaylist)) {
-              // Dismiss any existing swipe actions
-              document.querySelectorAll('.swipe-action').forEach(el => el.remove());
+          const ACTION_W = 80; // width of revealed action button
+          const THRESHOLD = ACTION_W * 0.6; // commit threshold
+          let swStartX = 0, swStartY = 0, swCurX = 0, swTracking = false, swOpen = false;
+          // Determine which action this view gets
+          const swipeIsRemove = isUpNext || isPlaylist;
+          const swipeLabel = swipeIsRemove ? 'Remove' : (() => {
+            const lp = (lastUsedPlId && pls.find(p => String(p.id) === lastUsedPlId)) || pls[pls.length - 1];
+            return lp ? `+ ${lp.name}` : '+ Playlist';
+          })();
+
+          // Build the action button (hidden behind row, anchored right)
+          const actionBtn = document.createElement('div');
+          actionBtn.className = 'swipe-action-btn ' + (swipeIsRemove ? 'swipe-remove' : 'swipe-add');
+          actionBtn.textContent = swipeLabel;
+          actionBtn.style.width = ACTION_W + 'px';
+          row.style.position = 'relative';
+          row.style.overflow = 'hidden';
+          row.appendChild(actionBtn);
+
+          function swipeReset(animate) {
+            if (animate) { row.style.transition = 'transform .2s'; }
+            row.style.transform = 'translateX(0)';
+            swOpen = false;
+            setTimeout(() => { row.style.transition = ''; }, 200);
+          }
+          function swipeCommit() {
+            row.style.transition = 'transform .15s';
+            row.style.transform = `translateX(-${ACTION_W}px)`;
+            swOpen = true;
+            setTimeout(() => { row.style.transition = ''; }, 150);
+          }
+
+          actionBtn.addEventListener('click', async e2 => {
+            e2.stopPropagation();
+            swipeReset(true);
+            if (swipeIsRemove) {
               if (isUpNext) {
                 if (song.id === playingId) { toast('Cannot remove currently playing song'); return; }
-                const btn = document.createElement('div');
-                btn.className = 'swipe-action swipe-remove';
-                btn.textContent = 'Remove';
-                btn.addEventListener('click', e2 => {
-                  e2.stopPropagation();
-                  const idx = queue.indexOf(song.id);
-                  if (idx >= 0) { queue.splice(idx, 1); if (idx < qi) qi--; clearPrefetch(); updCounts(); }
-                  renderList();
-                });
-                row.style.position = 'relative';
-                row.appendChild(btn);
-                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
-              } else if (isPlaylist) {
+                const idx = queue.indexOf(song.id);
+                if (idx >= 0) { queue.splice(idx, 1); if (idx < qi) qi--; clearPrefetch(); updCounts(); }
+              } else {
                 const pl = pls.find(p => String(p.id) === String(view));
-                if (!pl) return;
-                const btn = document.createElement('div');
-                btn.className = 'swipe-action swipe-remove';
-                btn.textContent = 'Remove';
-                btn.addEventListener('click', e2 => {
-                  e2.stopPropagation();
-                  pl.sids = pl.sids.filter(id => id !== String(song.id));
-                  pushPlaylists(); renderList();
-                });
-                row.style.position = 'relative';
-                row.appendChild(btn);
-                setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
+                if (pl) { pl.sids = pl.sids.filter(id => id !== String(song.id)); await pushPlaylists(); }
               }
+              renderList();
+            } else {
+              await quickAddToPlaylist(song.id);
             }
-            // Swipe RIGHT → add to last playlist (all views)
-            if (dx > 60 && !isUpNext) {
-              document.querySelectorAll('.swipe-action').forEach(el => el.remove());
-              const lastPl = pls[pls.length - 1];
-              const plName = lastPl ? lastPl.name : 'New Playlist';
-              const btn = document.createElement('div');
-              btn.className = 'swipe-action swipe-add';
-              btn.textContent = `+ ${plName}`;
-              btn.addEventListener('click', async e2 => {
-                e2.stopPropagation();
-                await quickAddToPlaylist(song.id);
-                btn.remove();
-              });
-              row.style.position = 'relative';
-              row.appendChild(btn);
-              setTimeout(() => { if (btn.parentNode) btn.remove(); }, 3000);
+          });
+
+          row.addEventListener('touchstart', e => {
+            swStartX = e.touches[0].clientX;
+            swStartY = e.touches[0].clientY;
+            swCurX = swStartX;
+            swTracking = false;
+          }, { passive: true });
+
+          row.addEventListener('touchmove', e => {
+            const dx = e.touches[0].clientX - swStartX;
+            const dy = Math.abs(e.touches[0].clientY - swStartY);
+            swCurX = e.touches[0].clientX;
+            // Decide if this is a horizontal swipe
+            if (!swTracking) {
+              if (Math.abs(dx) < 6 && dy < 6) return;
+              if (dy > Math.abs(dx)) return; // vertical — ignore
+              swTracking = true;
             }
+            if (!swTracking) return;
+            // Only allow leftward swipe (or right to close if open)
+            if (swOpen) {
+              const close = Math.min(0, dx - ACTION_W); // can swipe back right
+              row.style.transform = `translateX(${Math.max(-ACTION_W, close - ACTION_W)}px)`;
+            } else {
+              const offset = Math.min(0, dx); // clamp to 0..-ACTION_W
+              row.style.transform = `translateX(${Math.max(-ACTION_W, offset)}px)`;
+            }
+          }, { passive: true });
+
+          row.addEventListener('touchend', e => {
+            if (!swTracking) return;
+            const totalDx = e.changedTouches[0].clientX - swStartX;
+            if (swOpen && totalDx > 20) { swipeReset(true); return; }
+            if (Math.abs(totalDx) > THRESHOLD && totalDx < 0) swipeCommit();
+            else swipeReset(true);
+            swTracking = false;
+          }, { passive: true });
+
+          // Close swipe when another row is swiped
+          document.addEventListener('touchstart', e => {
+            if (swOpen && !row.contains(e.target)) swipeReset(true);
           }, { passive: true });
         }
 
@@ -3685,7 +3798,7 @@ function setMS(song) {
       document.getElementById('cache-ct').textContent = cachedIds.size;
       document.getElementById('upnext-ct').textContent = queue.length;
       // Highlight fixed nav items
-      ['all','cached','upnext'].forEach(id => {
+      ['all','albums','singles','cached','upnext'].forEach(id => {
         document.getElementById('nav-' + id)?.classList.toggle('active', view === id);
       });
       const nav = document.getElementById('pl-nav');
@@ -3758,6 +3871,8 @@ function setMS(song) {
 
     const VIEW_NAMES = {
       'all':             'Songs',
+      'albums':          'Albums',
+      'singles':         'Singles',
       'cached':          'Offline Cache',
       'upnext':          'Up Next',
       'recently-added':  'Recently Added',
@@ -3782,9 +3897,20 @@ function setMS(song) {
       const mobSearchEl = document.getElementById('mob-search-input');
       if (mobSearchEl) { mobSearchEl.value = ''; closeMobSearch(); }
       document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', String(el.dataset.view) === String(v)));
-      // Update mobile toolbar title
+      // Update mobile toolbar title — tappable if this is a playlist
       const brand = document.getElementById('tb-brand');
-      if (brand) brand.textContent = viewDisplayName(v);
+      if (brand) {
+        brand.textContent = viewDisplayName(v);
+        const isPlView = pls.some(p => String(p.id) === String(v));
+        brand.style.cursor = isPlView ? 'pointer' : '';
+        brand.title = isPlView ? 'Tap to rename' : '';
+        // Remove previous listener by cloning
+        const newBrand = brand.cloneNode(true);
+        brand.parentNode.replaceChild(newBrand, brand);
+        if (isPlView) {
+          newBrand.addEventListener('click', () => renamePl(v));
+        }
+      }
       // Browsing never rebuilds the queue — queue is frozen at playSong time
       renderList(); renderSB();
     }
@@ -3801,14 +3927,16 @@ function setMS(song) {
     document.getElementById('menu-btn').addEventListener('click', openSidebar);
     document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
     document.getElementById('nav-all').addEventListener('click', () => { switchView('all'); closeSidebar(); });
+    document.getElementById('nav-albums').addEventListener('click', () => { switchView('albums'); closeSidebar(); });
+    document.getElementById('nav-singles').addEventListener('click', () => { switchView('singles'); closeSidebar(); });
     document.getElementById('nav-cached').addEventListener('click', () => { switchView('cached'); closeSidebar(); });
     document.getElementById('nav-upnext').addEventListener('click', () => { switchView('upnext'); closeSidebar(); });
 
     // ── NOW PLAYING PANEL (mobile) ────────────────────────────────────────────────
     function openNPPanel() { document.getElementById('nowplaying-panel').classList.add('open'); }
     function closeNPPanel() { document.getElementById('nowplaying-panel').classList.remove('open'); }
-    document.getElementById('mob-player').addEventListener('click', e => {
-      if (e.target.closest('#mob-ctrls')) return;
+    // Only open NP panel when tapping the song info text — not the whole player bar
+    document.getElementById('mob-info').addEventListener('click', e => {
       openNPPanel();
     });
     document.getElementById('np-panel-bar').addEventListener('click', closeNPPanel);
@@ -4174,12 +4302,12 @@ function setMS(song) {
       renderList();
     });
     document.getElementById('mob-search-input').addEventListener('blur', () => {
-      // Small delay so cancel button click registers before blur closes
       setTimeout(() => {
         if (document.activeElement !== document.getElementById('mob-search-input')) closeMobSearch();
       }, 150);
     });
-    document.getElementById('mob-search-cancel-btn').addEventListener('click', () => {
+    document.getElementById('mob-search-cancel-btn').addEventListener('click', e => {
+      e.stopPropagation();
       sq = '';
       document.getElementById('mob-search-input').value = '';
       document.getElementById('search').value = '';
