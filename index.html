@@ -3687,6 +3687,127 @@ function setMS(song) {
       });
     }
 
+    // ── ART_PLACEHOLDER defined once, outside render loop ───────────────────────
+    const ART_PLACEHOLDER = "<div class='art-placeholder'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><path d='M9 18V5l12-2v13'/><circle cx='6' cy='18' r='3'/><circle cx='18' cy='16' r='3'/></svg></div>";
+    const HEART_RED = '#e5143a';
+
+    // ── Delegated event handlers on #sl — attached once, not per row ──────────
+    // All row interaction goes through here instead of per-row listeners.
+    (function wireListDelegation() {
+      const list = document.getElementById('sl');
+      let pressTimer = null;
+
+      // Helper: find closest .sr ancestor and its song id
+      function rowOf(el) {
+        const r = el.closest('.sr');
+        return r ? { row: r, id: r.dataset.id } : null;
+      }
+
+      // Click delegation
+      list.addEventListener('click', e => {
+        // Star button
+        const starBtn = e.target.closest('.star-btn');
+        if (starBtn) { e.stopPropagation(); toggleStar(starBtn.dataset.id); return; }
+
+        // Cache button
+        const cacheEl = e.target.closest('.sdl');
+        if (cacheEl) {
+          e.stopPropagation();
+          const hit = rowOf(cacheEl); if (!hit) return;
+          cachedIds.has(hit.id) ? uncache(hit.id) : cacheSong(hit.id);
+          return;
+        }
+
+        // Add-to-playlist button
+        const addplEl = e.target.closest('.sq-addpl');
+        if (addplEl) { e.stopPropagation(); quickAddToPlaylist(addplEl.dataset.id); return; }
+
+        // Up Next remove (num cell)
+        const snRem = e.target.closest('.sn-removable');
+        if (snRem) {
+          e.stopPropagation();
+          const id = snRem.dataset.id;
+          const idx = queue.indexOf(id);
+          if (idx >= 0) { queue.splice(idx, 1); if (idx < qi) qi--; clearPrefetch(); updCounts(); }
+          renderList(); return;
+        }
+
+        // Go-to artist/album arrows
+        const gotoEl = e.target.closest('[data-goto]');
+        if (gotoEl) {
+          e.stopPropagation();
+          const hit = rowOf(gotoEl); if (!hit) return;
+          const s = songs.find(x => x.id === hit.id); if (!s) return;
+          if (gotoEl.dataset.goto === 'artist') goToArtist(s.artist);
+          else goToAlbum(s.album, s.artist);
+          return;
+        }
+
+        // Row click (selection / bulk)
+        const hit = rowOf(e.target); if (!hit) return;
+        const { row, id } = hit;
+
+        if (e.shiftKey && bulkMode && lastBulkIdx >= 0) {
+          const allRows = Array.from(list.querySelectorAll('.sr'));
+          const curIdx = allRows.indexOf(row);
+          if (curIdx >= 0) {
+            const lo = Math.min(lastBulkIdx, curIdx), hi = Math.max(lastBulkIdx, curIdx);
+            allRows.slice(lo, hi + 1).forEach(r => { if (r.dataset.id) { bulkSel.add(r.dataset.id); r.classList.add('bulk-sel'); } });
+          }
+          updBulkBar(); return;
+        }
+        if (e.metaKey || e.ctrlKey || bulkMode) {
+          if (bulkSel.has(id)) { bulkSel.delete(id); row.classList.remove('bulk-sel'); }
+          else {
+            bulkSel.add(id); row.classList.add('bulk-sel');
+            lastBulkIdx = Array.from(list.querySelectorAll('.sr')).indexOf(row);
+          }
+          bulkMode = true; updBulkBar(); return;
+        }
+        const prev = list.querySelector('.sr.sel');
+        if (prev) prev.classList.remove('sel');
+        selId = id; row.classList.add('sel');
+      });
+
+      // Dblclick delegation
+      list.addEventListener('dblclick', e => {
+        const hit = rowOf(e.target); if (!hit) return;
+        playSong(hit.id, true, true);
+      });
+
+      // Contextmenu delegation
+      list.addEventListener('contextmenu', e => {
+        const hit = rowOf(e.target); if (!hit) return;
+        e.preventDefault(); showCtx(e.clientX, e.clientY, hit.id);
+      });
+
+      // Long-press delegation (mobile)
+      list.addEventListener('touchstart', e => {
+        const hit = rowOf(e.target); if (!hit) return;
+        const { row, id } = hit;
+        pressTimer = setTimeout(() => {
+          if (bulkMode) showCtx(60, window.innerHeight - 260, id);
+          else {
+            enterBulkMode(id); row.classList.add('bulk-sel');
+            lastBulkIdx = Array.from(list.querySelectorAll('.sr')).indexOf(row);
+          }
+        }, 500);
+      }, { passive: true });
+      list.addEventListener('touchend',  () => clearTimeout(pressTimer), { passive: true });
+      list.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
+
+      // Single global touchstart on document to close open swipe rows
+      document.addEventListener('touchstart', e => {
+        const openWrap = list.querySelector('.sw-wrap.sw-open');
+        if (openWrap && !openWrap.contains(e.target)) {
+          const rowEl = openWrap.querySelector('.sr');
+          if (rowEl) { rowEl.style.transition = 'transform .2s'; rowEl.style.transform = 'translateX(0)'; }
+          openWrap.classList.remove('sw-open');
+          setTimeout(() => { if (rowEl) rowEl.style.transition = ''; }, 200);
+        }
+      }, { passive: true });
+    })();
+
     function renderList() {
       const s = getViewSongs();
       const list = document.getElementById('sl');
@@ -3738,11 +3859,8 @@ function setMS(song) {
         row.className  = 'sr' + (isNow ? ' now' : '') + (isNow && !playing ? ' paused' : '') + (bulkSel.has(song.id) ? ' bulk-sel' : '');
         row.dataset.id = song.id;
 
-        const HEART_RED = '#e5143a';
         const starSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${starred ? HEART_RED : 'none'}" stroke="${starred ? HEART_RED : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
         const cacheSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${isCached ? '<polyline points="20 6 9 17 4 12"/>' : DL_SVG}</svg>`;
-        // artHtml: mobile only — show real art or a blank placeholder (consistent sizing)
-        const ART_PLACEHOLDER = "<div class='art-placeholder'><svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><path d='M9 18V5l12-2v13'/><circle cx='6' cy='18' r='3'/><circle cx='18' cy='16' r='3'/></svg></div>";
         const artHtml = m.albumArtUrl
           ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.parentNode.innerHTML='${ART_PLACEHOLDER}'">`
           : ART_PLACEHOLDER;
@@ -3811,36 +3929,6 @@ function setMS(song) {
           });
           row.innerHTML = cells.join('');
 
-          // Go-to arrows on now-playing row (desktop)
-          if (isNow) {
-            const artistGoto = row.querySelector('.sa-goto');
-            if (artistGoto) artistGoto.addEventListener('click', e => { e.stopPropagation(); goToArtist(song.artist); });
-            const albumGoto = row.querySelector('.sb-goto');
-            if (albumGoto) albumGoto.addEventListener('click', e => { e.stopPropagation(); goToAlbum(song.album, song.artist); });
-          }
-
-          // Quick-add to playlist button
-          const addplEl = row.querySelector('.sq-addpl');
-          if (addplEl) addplEl.addEventListener('click', e => { e.stopPropagation(); quickAddToPlaylist(song.id); });
-
-          // Up Next: remove via num cell click
-          const snRemovable = row.querySelector('.sn-removable');
-          if (snRemovable) {
-            snRemovable.addEventListener('click', e => {
-              e.stopPropagation();
-              const idx = queue.indexOf(song.id);
-              if (idx < 0) return;
-              queue.splice(idx, 1);
-              if (idx < qi) qi--;
-              clearPrefetch(); updCounts(); renderList();
-              console.log(`[Queue] Removed id=${song.id}, queue now ${queue.length} songs`);
-            });
-          }
-
-          // Cache click
-          const cacheEl = row.querySelector('.sdl');
-          if (cacheEl) cacheEl.addEventListener('click', e => { e.stopPropagation(); isCached ? uncache(song.id) : cacheSong(song.id); });
-
           // Drag-to-reorder for playlists and Up Next
           if (isPlaylist || isUpNext) {
             row.addEventListener('dragstart', e => {
@@ -3908,41 +3996,7 @@ function setMS(song) {
           }
         }
 
-        // Star click
-        row.querySelector('.star-btn')?.addEventListener('click', e => { e.stopPropagation(); toggleStar(song.id); });
-
-        row.addEventListener('dblclick', () => { playSong(song.id, true, true); });
-        row.addEventListener('click', e => {
-          if (e.shiftKey && bulkMode && lastBulkIdx >= 0) {
-            const allRows = Array.from(document.querySelectorAll('#sl .sr'));
-            const curIdx = allRows.indexOf(row);
-            if (curIdx >= 0) {
-              const lo = Math.min(lastBulkIdx, curIdx), hi = Math.max(lastBulkIdx, curIdx);
-              allRows.slice(lo, hi + 1).forEach(r => { if (r.dataset.id) { bulkSel.add(r.dataset.id); r.classList.add('bulk-sel'); } });
-            }
-            updBulkBar(); return;
-          }
-          if (e.metaKey || e.ctrlKey || bulkMode) {
-            if (bulkSel.has(song.id)) { bulkSel.delete(song.id); row.classList.remove('bulk-sel'); }
-            else { bulkSel.add(song.id); row.classList.add('bulk-sel'); lastBulkIdx = Array.from(document.querySelectorAll('#sl .sr')).indexOf(row); }
-            bulkMode = true; updBulkBar(); return;
-          }
-          const prev = document.querySelector('.sr.sel');
-          if (prev) prev.classList.remove('sel');
-          selId = song.id; row.classList.add('sel');
-        });
-        row.addEventListener('contextmenu', e => { e.preventDefault(); showCtx(e.clientX, e.clientY, song.id); });
-
-        // Mobile: long-press for context/bulk
-        let pressTimer;
-        row.addEventListener('touchstart', () => {
-          pressTimer = setTimeout(() => {
-            if (bulkMode) showCtx(60, window.innerHeight - 260, song.id);
-            else { enterBulkMode(song.id); row.classList.add('bulk-sel'); lastBulkIdx = Array.from(document.querySelectorAll('#sl .sr')).indexOf(row); }
-          }, 500);
-        }, { passive: true });
-        row.addEventListener('touchend', () => clearTimeout(pressTimer), { passive: true });
-        row.addEventListener('touchmove', () => clearTimeout(pressTimer), { passive: true });
+        // Interaction handled by delegated listeners on #sl — no per-row listeners needed
 
         // iOS-style swipe-left to reveal action button at right edge
         if (window.innerWidth <= 700) {
@@ -3973,12 +4027,14 @@ function setMS(song) {
             if (animate) row.style.transition = 'transform .2s';
             row.style.transform = 'translateX(0)';
             swOpen = false;
+            wrap.classList.remove('sw-open');
             setTimeout(() => { row.style.transition = ''; }, 200);
           }
           function swipeCommit() {
             row.style.transition = 'transform .15s';
             row.style.transform = `translateX(-${ACTION_W}px)`;
             swOpen = true;
+            wrap.classList.add('sw-open');
             setTimeout(() => { row.style.transition = ''; }, 150);
           }
 
@@ -4032,9 +4088,7 @@ function setMS(song) {
             swTracking = false;
           }, { passive: true });
 
-          document.addEventListener('touchstart', e => {
-            if (swOpen && !wrap.contains(e.target)) swipeReset(true);
-          }, { passive: true });
+          // swipe close handled by single global listener above (uses sw-open class)
 
           frag.appendChild(wrap);
         } else {
