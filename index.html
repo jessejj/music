@@ -2733,6 +2733,8 @@
             _wacPromoteNext(nextSongObj);
             if (nextQiVal >= 0) qi = nextQiVal;
             playingId = nextSongObj.id;
+            // Keep kaEl alive through the transition
+            if (kaEl.paused && !_userPaused) kaEl.play().catch(() => {});
             updateAllNP(nextSongObj);
             setMS(nextSongObj);
             renderList();
@@ -2758,6 +2760,10 @@
       try {
         const buf = await _wacFetchBuffer(nextSong);
         if (!_wacActive || _wacFetchingNextId !== nextSong.id) return; // cancelled
+        // Ensure AudioContext is running before scheduling (iOS may have suspended it)
+        if (_wac.state === 'suspended' && !_userPaused) await _wac.resume();
+        // Ensure keepalive is looping so iOS holds the audio session through the transition
+        if (kaEl.paused && !_userPaused) kaEl.play().catch(() => {});
         _wacNextBuffer = buf;
         _wacNextSongId = nextSong.id;
         if (_wacNextSource) { try { _wacNextSource.stop(); } catch {} }
@@ -2832,7 +2838,31 @@
     const SILENT_MP3 = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADwADMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM////////////////////////////////////////////////////////////////AAAAAExhdmYAAAAAAAAAAAAAAAAAAAAAACQAAAAAAAAAAAPA5WsuAAAAAAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIADWg+M9MIAARF5QgkABMGAAMCIgQAYABAIiBhEQiIQFECJEABEAAAH/AAAB4AA=';
     const kaEl = document.getElementById('keepalive');
     kaEl.src = SILENT_MP3;
-    kaEl.volume = 0.001;
+    kaEl.volume = 0.01; // slightly higher — iOS may ignore truly inaudible streams
+
+    // ── iOS LOCK SCREEN: resume AudioContext when page becomes visible again ──
+    // iOS suspends AudioContext when screen locks. We resume it on visibilitychange
+    // and also poll every 2s while WAC is active to catch cases where the event
+    // doesn't fire reliably (e.g. Control Centre, Siri interruption).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && _wacActive && _wac) {
+        if (_wac.state === 'suspended' && !_userPaused) {
+          _wac.resume().catch(() => {});
+        }
+        // Also ensure kaEl is still looping
+        if (kaEl.paused && !_userPaused) kaEl.play().catch(() => {});
+      }
+    });
+
+    // Polling fallback — iOS sometimes suspends WAC without firing visibilitychange
+    setInterval(() => {
+      if (_wacActive && _wac && _wac.state === 'suspended' && !_userPaused) {
+        _wac.resume().catch(() => {});
+      }
+      if (_wacActive && kaEl.paused && !_userPaused) {
+        kaEl.play().catch(() => {});
+      }
+    }, 2000);
 
     function unlockAudioSession() {
       if (_kaUnlocked) return;
@@ -3277,13 +3307,17 @@
             const seek = aud.currentTime || 0;
             // Pause the HTML element — WebAudio takes over as the audio output.
             // _wacTakeover suppresses the _onPause UI handler.
+            // Ensure keepalive is running BEFORE we pause aud — no gap in iOS audio session
+            if (kaEl.paused) kaEl.play().catch(() => {});
             _wacTakeover = true;
             aud.pause();
-            aud.volume = 0; // belt-and-suspenders: also zero volume in case pause races
+            aud.volume = 0; // belt-and-suspenders
             _wacTakeover = false;
             _wacPlayBuffer(buf, song, seek, null);
             // Restore HTML volume for when WAC is not active (seeking, fallback)
             aud.volume = rgVolume(song);
+            // Ensure WAC context is running (may have been auto-suspended by iOS)
+            if (_wac.state === 'suspended') _wac.resume().catch(() => {});
             // HTML element is paused so 'timeupdate' won't fire — drive UI with interval
             clearInterval(_wacTicker);
             _wacTicker = setInterval(() => { if (_wacActive) _onTimeUpdate(); else clearInterval(_wacTicker); }, 250);
@@ -4028,12 +4062,11 @@ function setMS(song) {
         const trackNum = (isPlaylist || isUpNext) ? (i + 1) : (song.track || (i + 1));
 
         if (mobile) {
-          const hasArt = !!m.albumArtUrl;
-          // Only include the 36px art column when there's actual artwork
-          row.style.gridTemplateColumns = hasArt ? '30px 36px 1fr 56px 34px' : '30px 1fr 56px 34px';
+          // Always reserve the 36px art column — blank when no art, so all rows align
+          row.style.gridTemplateColumns = '30px 36px 1fr 56px 34px';
           row.innerHTML = `
             <div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>
-            ${hasArt ? `<div style="display:flex;align-items:center;padding:3px 4px">${artHtml}</div>` : ''}
+            <div style="display:flex;align-items:center;padding:3px 4px">${artHtml}</div>
             <div class="s-cell">
               <span class="st">${esc(song.title || 'Unknown')}</span>
               <span class="sa-mob">${esc(song.artist || '')}</span>
