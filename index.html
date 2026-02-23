@@ -2648,6 +2648,8 @@
     let _wacCurStartAt = 0;      // AudioContext time when current track started
     let _wacCurStartOffset = 0;  // how many seconds into the buffer playback started
     let _wacActive = false;      // true when WebAudio is driving playback
+    let _wacTakeover = false;    // suppresses _onPause UI when WAC pauses HTML element
+    let _wacTicker = null;       // setInterval handle for progress updates while WAC active
     let _wacFetchingNextId = null;
     const WAC_PREFETCH_SECS = 20; // start fetching next track this many seconds before end
 
@@ -2667,16 +2669,21 @@
       return Math.min(1.0, Math.max(0.05, BASE_VOLUME * Math.pow(10, (rg + RG_PREAMP_DB) / 20)));
     }
 
-    // Returns the encoder delay in seconds for a song (default 0 if unknown)
+    // Returns encoder delay in seconds. Uses explicit metadata when available,
+    // otherwise falls back to well-known codec defaults (LAME MP3: 1105, AAC: 2112).
     function _encDelay(song) {
-      const d = song?.encoder_delay;
-      if (!d || !song?.sample_rate) return 0;
-      return d / (song.sample_rate || 44100);
+      const sr = song?.sample_rate || 44100;
+      if (song?.encoder_delay != null) return song.encoder_delay / sr;
+      const ext = (song?.ext || '').toLowerCase();
+      if (ext === 'mp3') return 1105 / sr;        // LAME default
+      if (ext === 'm4a' || ext === 'aac') return 2112 / sr; // AAC/iTunes default
+      return 0;
     }
     function _encPadding(song) {
-      const p = song?.encoder_padding;
-      if (!p || !song?.sample_rate) return 0;
-      return p / (song.sample_rate || 44100);
+      const sr = song?.sample_rate || 44100;
+      if (song?.encoder_padding != null) return song.encoder_padding / sr;
+      // End padding varies too much to guess safely — only use explicit metadata
+      return 0;
     }
 
     // Fetch audio bytes for a song and decode to AudioBuffer
@@ -2714,10 +2721,32 @@
       _wacCurBuffer = buffer;
       _wacActive = true;
 
-      // When this source ends, advance to next (if pre-scheduled via _wacScheduleNext)
+      // When this source ends: either transition to pre-scheduled next, or mark stopped
       _wacCurSource.onended = () => {
-        if (_wacCurSongId !== song.id) return; // stale
-        if (!_wacNextSource) { _wacActive = false; }
+        if (_wacCurSongId !== song.id) return; // stale — a new song was started
+        if (_wacNextSource && _wacNextSongId) {
+          // Pre-scheduled next track is already playing (WAC started it at exact time).
+          // Promote it and update all UI state.
+          const nextSongObj = songs.find(s => s.id === _wacNextSongId);
+          if (nextSongObj) {
+            const nextQiVal = queue.indexOf(_wacNextSongId);
+            _wacPromoteNext(nextSongObj);
+            if (nextQiVal >= 0) qi = nextQiVal;
+            playingId = nextSongObj.id;
+            updateAllNP(nextSongObj);
+            setMS(nextSongObj);
+            renderList();
+            schedulePlayCount(nextSongObj.id);
+            pushNowPlaying(nextSongObj);
+            updNPActions();
+            if (!getMeta(nextSongObj.id).albumArtUrl) fetchArtForSong(nextSongObj).then(() => { updateAllNP(nextSongObj); setMS(nextSongObj); });
+          }
+        } else {
+          // No next track pre-scheduled — playback has truly ended
+          _wacActive = false;
+          clearInterval(_wacTicker); _wacTicker = null;
+          playing = false; updPBtn(); renderList();
+        }
       };
     }
 
@@ -2740,6 +2769,19 @@
         // Schedule to start at current track's end, offset past encoder delay
         _wacNextSource.start(currentEndTime, delay, trimmedDuration);
         console.log(`[WebAudio] Scheduled "${nextSong.title}" at t=${currentEndTime.toFixed(3)}, encoderDelay=${(delay*1000).toFixed(1)}ms`);
+        // When this pre-scheduled source finishes, it means it just STARTED
+        // (onended fires at track END, not start) — but we need to know when it BEGINS.
+        // We handle the "track started" moment via the _onEnded → _wacPromoteNext path below.
+        // This onended handles the case where the PROMOTED track itself ends with no successor.
+        const capturedNextSong = nextSong;
+        _wacNextSource.onended = () => {
+          if (_wacCurSongId !== capturedNextSong.id) return;
+          if (!_wacNextSource) {
+            _wacActive = false;
+            clearInterval(_wacTicker); _wacTicker = null;
+            playing = false; updPBtn(); renderList();
+          }
+        };
       } catch (e) {
         _wacFetchingNextId = null;
         console.warn('[WebAudio] prefetch failed:', e);
@@ -2760,6 +2802,9 @@
       if (_wacNextSource) { try { _wacNextSource.stop(); } catch {} _wacNextSource = null; }
       _wacActive = false; _wacCurSongId = null; _wacNextSongId = null;
       _wacCurBuffer = null; _wacNextBuffer = null; _wacFetchingNextId = null;
+      clearInterval(_wacTicker); _wacTicker = null;
+      // Restore HTML element volume so fallback path is audible
+      if (aud) aud.volume = rgVolume(curSong());
     }
 
     // Returns current playback position via WebAudio clock (more accurate than aud.currentTime)
@@ -3230,9 +3275,18 @@
             if (playingId !== id) return; // track changed before we decoded
             // Seek to match HTML element's current position
             const seek = aud.currentTime || 0;
-            // Mute HTML audio — WebAudio will drive the actual sound
-            aud.volume = 0;
+            // Pause the HTML element — WebAudio takes over as the audio output.
+            // _wacTakeover suppresses the _onPause UI handler.
+            _wacTakeover = true;
+            aud.pause();
+            aud.volume = 0; // belt-and-suspenders: also zero volume in case pause races
+            _wacTakeover = false;
             _wacPlayBuffer(buf, song, seek, null);
+            // Restore HTML volume for when WAC is not active (seeking, fallback)
+            aud.volume = rgVolume(song);
+            // HTML element is paused so 'timeupdate' won't fire — drive UI with interval
+            clearInterval(_wacTicker);
+            _wacTicker = setInterval(() => { if (_wacActive) _onTimeUpdate(); else clearInterval(_wacTicker); }, 250);
             console.log(`[WebAudio] Took over "${song.title}" at seek=${seek.toFixed(2)}s`);
           } catch (e) {
             // WebAudio failed — HTML element continues (already audible)
@@ -3356,12 +3410,15 @@ function setMS(song) {
   });
 
   navigator.mediaSession.setActionHandler('play', () => {
-    if (_wacActive && _wac && _wac.state === 'suspended') { _wac.resume().catch(()=>{}); playing = true; updPBtn(); pushNowPlaying(curSong()); }
-    else { aud.play(); playing = true; updPBtn(); pushNowPlaying(curSong()); }
+    if (_wacActive && _wac && _wac.state === 'suspended') {
+      _wac.resume().then(() => { playing = true; updPBtn(); pushNowPlaying(curSong()); }).catch(()=>{});
+    } else { aud.play(); }
   });
   navigator.mediaSession.setActionHandler('pause', () => {
-    if (_wacActive && _wac) { _wac.suspend().catch(()=>{}); }
-    aud.pause(); playing = false; updPBtn(); pushNowPlaying(curSong());
+    if (_wacActive && _wac) {
+      // Suspend WebAudio but keep kaEl running to hold the iOS audio session
+      _wac.suspend().then(() => { playing = false; updPBtn(); pushNowPlaying(curSong()); }).catch(()=>{});
+    } else { aud.pause(); }
   });
   navigator.mediaSession.setActionHandler('previoustrack', () => playPrev(true));
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
@@ -3485,15 +3542,24 @@ function setMS(song) {
       if (kaEl.paused) kaEl.play().catch(() => {});
     }
     function _onPause() {
+      // Suppress if WebAudio is taking over — it pauses the HTML element intentionally
+      if (_wacTakeover) return;
       playing = false; updPBtn(); renderList();
       if (curSong()) pushNowPlaying(curSong());
-      if (_userPaused) kaEl.pause();
+      // Only pause the keepalive if WebAudio is NOT active —
+      // kaEl must keep running to hold the iOS audio session open for WebAudio
+      if (_userPaused && !_wacActive) kaEl.pause();
     }
     function _onTimeUpdate() {
-      if (!aud.duration) return;
+      // When WebAudio is active, aud may be paused and have no duration;
+      // use the buffer duration (minus delay/padding) as fallback
+      const _wacDur = (_wacActive && _wacCurBuffer && curSong())
+        ? (_wacCurBuffer.duration - _encDelay(curSong()) - _encPadding(curSong()))
+        : null;
+      if (!aud.duration && !_wacDur) return;
       // Use WebAudio clock for display when active (more accurate)
       const curTime = (_wacActive ? (_wacCurrentTime() ?? aud.currentTime) : aud.currentTime);
-      const dur = aud.duration;
+      const dur = _wacDur ?? aud.duration;
       const p = (curTime / dur) * 100;
       document.getElementById('pf').style.width = p + '%';
       document.getElementById('pt').style.left = p + '%';
@@ -3953,18 +4019,21 @@ function setMS(song) {
         const HEART_RED = '#e5143a';
         const starSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${starred ? HEART_RED : 'none'}" stroke="${starred ? HEART_RED : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
         const cacheSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">${isCached ? '<polyline points="20 6 9 17 4 12"/>' : DL_SVG}</svg>`;
+        // artHtml: only used on mobile when there is real artwork (hasArt guard in row template)
         const artHtml = m.albumArtUrl
-          ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.parentNode.innerHTML='<div class=\\'art-placeholder\\'><svg width=\\'18\\' height=\\'18\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\'><path d=\\'M9 18V5l12-2v13\\'/><circle cx=\\'6\\' cy=\\'18\\' r=\\'3\\'/><circle cx=\\'18\\' cy=\\'16\\' r=\\'3\\'/></svg></div>'">`
-          : `<div class="art-placeholder"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>`;
+          ? `<img src="${m.albumArtUrl}" class="art-thumb" onerror="this.parentNode.style.display='none'">` 
+          : '';
 
         // Track number: playlist/upnext = position in list, everything else = album track
         const trackNum = (isPlaylist || isUpNext) ? (i + 1) : (song.track || (i + 1));
 
         if (mobile) {
-          row.style.gridTemplateColumns = '30px 36px 1fr 56px 34px';
+          const hasArt = !!m.albumArtUrl;
+          // Only include the 36px art column when there's actual artwork
+          row.style.gridTemplateColumns = hasArt ? '30px 36px 1fr 56px 34px' : '30px 1fr 56px 34px';
           row.innerHTML = `
             <div class="sn"><span class="snv">${trackNum}</span><div class="eqb"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--green)"><path d="M8 5v14l11-7z"/></svg></div></div>
-            <div style="display:flex;align-items:center;padding:3px 4px">${artHtml}</div>
+            ${hasArt ? `<div style="display:flex;align-items:center;padding:3px 4px">${artHtml}</div>` : ''}
             <div class="s-cell">
               <span class="st">${esc(song.title || 'Unknown')}</span>
               <span class="sa-mob">${esc(song.artist || '')}</span>
@@ -4697,15 +4766,22 @@ function setMS(song) {
         if (playing) {
           _userPaused = true;
           if (_wacActive && _wac) {
-            // Suspend AudioContext to pause WebAudio
-            _wac.suspend().catch(() => {});
+            // Suspend AudioContext — this pauses WebAudio output.
+            // kaEl keeps playing to hold the iOS audio session open.
+            _wac.suspend().then(() => {
+              playing = false; updPBtn(); renderList();
+              if (curSong()) pushNowPlaying(curSong());
+            }).catch(() => {});
+          } else {
+            aud.pause();
           }
-          aud.pause();
         } else {
           _userPaused = false;
           if (_wacActive && _wac && _wac.state === 'suspended') {
-            _wac.resume().catch(() => {});
-            playing = true; updPBtn();
+            _wac.resume().then(() => {
+              playing = true; updPBtn(); renderList();
+              pushNowPlaying(curSong());
+            }).catch(() => {});
           } else {
             aud.play();
           }
