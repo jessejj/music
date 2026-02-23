@@ -2827,7 +2827,16 @@
     async function toggleStar(id) {
       const val = !isStarred(id);
       await pushMeta({ [id]: { starred: val } });
-      renderList(); updNPActions();
+      // Patch just the affected row in place — no full re-render
+      const HEART_RED = '#e5143a';
+      const newSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="${val ? HEART_RED : 'none'}" stroke="${val ? HEART_RED : 'currentColor'}" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+      document.querySelectorAll(`.star-btn[data-id="${id}"]`).forEach(btn => {
+        btn.innerHTML = newSvg;
+        btn.classList.toggle('on', val);
+      });
+      // If viewing starred list, a full re-render is needed to add/remove the row
+      if (view === 'starred') renderList();
+      updNPActions();
       toast(val ? '♥ Loved' : 'Removed from loved');
     }
     async function recordPlay(id) {
@@ -4319,8 +4328,13 @@ function setMS(song) {
         toast(`Created "New Playlist"`);
       }
       await addToPl(pl.id, songId);
-      // Re-render so the + button title updates
-      renderList();
+      // No full re-render — addToPl handles re-render if viewing that playlist.
+      // Update + button tooltips in place for the affected song row.
+      const nextPl = (lastUsedPlId && pls.find(p => String(p.id) === lastUsedPlId)) || pls[pls.length - 1];
+      const tip = nextPl ? `Add to "${nextPl.name}"` : 'Add to Playlist';
+      document.querySelectorAll(`.sq-addpl[data-id="${songId}"]`).forEach(btn => {
+        btn.title = tip;
+      });
     }
 
 
