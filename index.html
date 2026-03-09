@@ -1027,6 +1027,78 @@
       background: var(--accent);
     }
 
+    .stoggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    .stoggle-label {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .stoggle-label strong {
+      display: block;
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .stoggle-label span {
+      font-size: 10px;
+      color: var(--text3);
+      line-height: 1.4;
+    }
+
+    .stoggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .stoggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .stoggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+
+    .stoggle input:checked + .stoggle-track {
+      background: var(--accent-dk);
+      border-color: var(--accent);
+    }
+
+    .stoggle-track::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: var(--text3);
+      border-radius: 50%;
+      transition: transform .15s, background .15s;
+    }
+
+    .stoggle input:checked + .stoggle-track::after {
+      transform: translateX(16px);
+      background: #fff;
+    }
+
     .snote {
       font-size: 11px;
       color: var(--text3);
@@ -2518,6 +2590,16 @@
       <div class="sf"><label>NAS URL</label><input type="url" id="cfg-url" placeholder="https://music.yourdomain.com">
       </div>
       <div class="sf"><label>API Key</label><input type="password" id="cfg-key" placeholder="your-secret-key"></div>
+      <div class="stoggle-row">
+        <div class="stoggle-label">
+          <strong>Gapless Playback</strong>
+          <span>Merges album tracks server-side for seamless playback. Recommended for iOS.</span>
+        </div>
+        <label class="stoggle" title="Toggle gapless playback">
+          <input type="checkbox" id="cfg-gapless">
+          <span class="stoggle-track"></span>
+        </label>
+      </div>
       <button id="ssave">Save &amp; Connect</button>
       <p class="snote">Upload <code>api.php</code> and <code>index.html</code> to the same web folder on your Synology.
         Set <code>MUSIC_DIR</code> and <code>API_KEY</code> at the top of <code>api.php</code>.</p>
@@ -2574,6 +2656,7 @@
     let userLib = {}; // { [id]: { title, artist, album, added } } — user's personal library
     let playingId = null; // stable ID of the currently playing song — never changes on view switch
     let playing = false, shuf = false, rep = 0, gaplessMode = false;
+    let origQueue = []; // natural order saved when shuffle is on
     let view = 'all', selId = null, ctxId = null, sq = '';
     // Per-view sort state: each view remembers its own sort col/dir
     // Default sort cols per view (overridable by clicking headers)
@@ -2635,8 +2718,8 @@
       el.addEventListener('timeupdate', _onTimeUpdate);
       el.addEventListener('loadedmetadata', _onLoadedMeta);
       el.addEventListener('loadedmetadata', _onLoadedMetaPlayCount);
+      el.addEventListener('error', _onAudError);
     }
-    // Detach from an element when it becomes standby so its events don't bleed through
     function _detachAudListeners(el) {
       el.removeEventListener('ended', _onEnded);
       el.removeEventListener('play',  _onPlay);
@@ -2644,6 +2727,7 @@
       el.removeEventListener('timeupdate', _onTimeUpdate);
       el.removeEventListener('loadedmetadata', _onLoadedMeta);
       el.removeEventListener('loadedmetadata', _onLoadedMetaPlayCount);
+      el.removeEventListener('error', _onAudError);
     }
 
     function apiBase() { return (cfg.url || '').replace(/\/$/, ''); }
@@ -2679,7 +2763,7 @@
     //
     // Triggered automatically when: view==='albums' AND not shuffling AND album is complete.
     // Falls back to normal per-track streaming on any error.
-    async function albumStreamUrl(trackPaths) {
+    async function albumStreamUrl(trackPaths, totalSec = 0) {
       if (!cfg.url || !cfg.apiKey || !online) return null;
       try {
         const d = await apost('sign_album', { paths: trackPaths });
@@ -2687,6 +2771,7 @@
         const params = new URLSearchParams({
           action: 'album_stream', token: d.token, expires: d.expires, format: 'aac'
         });
+        if (totalSec > 0) params.set('total_sec', totalSec.toFixed(1));
         trackPaths.forEach(p => params.append('paths[]', p));
         return apiBase() + '/api.php?' + params.toString();
       } catch { return null; }
@@ -3127,17 +3212,20 @@
                 .map(sid => songs.find(s => s.id === sid))
                 .filter(s => s && s.album === song.album && (s.album_artist || s.artist) === (song.album_artist || song.artist));
               if (remaining.length > 1) {
-                const albumSrc = await albumStreamUrl(remaining.map(s => s.path));
+                const albumPaths = remaining.map(s => s.path);
+                const totalSec = remaining.reduce((s, sg) => s + (sg.duration || 0), 0);
+                const albumSrc = await albumStreamUrl(albumPaths, totalSec);
                 if (albumSrc) {
                   src = albumSrc;
                   _activeAlbumStreamSongIds = remaining.map(s => s.id);
+                  _albumStreamPaths  = albumPaths;
                   setBadge('stream', '⋯ ALBUM', song);
                   usedAlbumStream = true;
                 }
               }
             } catch { /* fall through to normal stream */ }
           }
-          if (!usedAlbumStream) { _activeAlbumStreamSongIds = null; }
+          if (!usedAlbumStream) { _activeAlbumStreamSongIds = null; _albumStreamPaths = null; }
           if (!usedAlbumStream) {
             try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING', song); }
             catch { toast('Stream failed'); return; }
@@ -3296,11 +3384,31 @@ function setMS(song) {
 
     // Snapshot the current view's song list as the frozen queue.
     // Called when the user initiates playback from a view.
+    function shuffleArray(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
     function freezeQueue(startId) {
       const s = getViewSongs();
-      queue = s.map(x => x.id);
-      qi = startId ? queue.indexOf(startId) : 0;
-      if (qi < 0) qi = 0;
+      const natural = s.map(x => x.id);
+      if (shuf) {
+        origQueue = [...natural];
+        queue = [...natural];
+        shuffleArray(queue);
+        if (startId) {
+          const idx = queue.indexOf(startId);
+          if (idx > 0) { queue.splice(idx, 1); queue.unshift(startId); }
+        }
+        qi = 0;
+      } else {
+        origQueue = [];
+        queue = natural;
+        qi = startId ? queue.indexOf(startId) : 0;
+        if (qi < 0) qi = 0;
+      }
       clearPrefetch();
       updCounts();
       console.log(`[Queue] Frozen from view="${view}" — ${queue.length} songs, starting at qi=${qi} id=${startId || queue[0]}`);
@@ -3311,7 +3419,7 @@ function setMS(song) {
         const skippedId = queue[qi];
         if (aud.currentTime > 3) recordSkip(skippedId);
       }
-      qi = shuf ? Math.floor(Math.random() * queue.length) : (qi + 1) % queue.length;
+      qi = (qi + 1) % queue.length;
       playingId = queue[qi];
       playSong(queue[qi]);
     }
@@ -3322,7 +3430,7 @@ function setMS(song) {
         const skippedId = queue[qi];
         if (aud.currentTime > 3) recordSkip(skippedId);
       }
-      qi = shuf ? Math.floor(Math.random() * queue.length) : (qi - 1 + queue.length) % queue.length;
+      qi = (qi - 1 + queue.length) % queue.length;
       playingId = queue[qi];
       playSong(queue[qi]);
     }
@@ -3330,6 +3438,7 @@ function setMS(song) {
     let _userPaused = false;
 
     let _activeAlbumStreamSongIds = null; // track which songs are covered by current album stream
+    let _albumStreamPaths  = null;        // track paths for stream state tracking
 
     function _onEnded() {
       if (rep === 2) { aud.currentTime = 0; aud.play(); return; }
@@ -3337,7 +3446,7 @@ function setMS(song) {
         // Album stream ended — the entire merged album is done. Advance past all covered songs.
         const lastId = _activeAlbumStreamSongIds[_activeAlbumStreamSongIds.length - 1];
         const lastIdx = queue.indexOf(lastId);
-        _activeAlbumStreamSongIds = null;
+        _activeAlbumStreamSongIds = null; _albumStreamPaths = null;
         if (lastIdx >= 0 && lastIdx + 1 < queue.length) {
           qi = lastIdx;
           playingId = queue[qi + 1];
@@ -3347,6 +3456,11 @@ function setMS(song) {
         // else: nothing after album, done
       } else {
         playNext();
+      }
+    }
+    function _onAudError() {
+      if (_activeAlbumStreamSongIds) {
+        console.log('[GaplessStream] audio error during album stream, code:', aud.error?.code);
       }
     }
     function _onPlay() {
@@ -4699,6 +4813,24 @@ function setMS(song) {
       document.getElementById(btnId).addEventListener('click', function () {
         shuf = !shuf; this.classList.toggle('on', shuf);
         ['shuf', 'np-shuf'].forEach(id => { if (id !== btnId) document.getElementById(id)?.classList.toggle('on', shuf); });
+        if (shuf) {
+          // Toggle ON: save natural order, shuffle remaining songs after current
+          origQueue = [...queue];
+          const currentId = queue[qi];
+          const rest = queue.filter((_, i) => i !== qi);
+          shuffleArray(rest);
+          queue = [currentId, ...rest];
+          qi = 0;
+        } else {
+          // Toggle OFF: restore natural order, find current song position
+          if (origQueue.length) {
+            const currentId = queue[qi];
+            queue = [...origQueue];
+            origQueue = [];
+            qi = queue.indexOf(currentId);
+            if (qi < 0) qi = 0;
+          }
+        }
       });
     }
     function wireRepeat(btnId) {
@@ -4829,16 +4961,18 @@ function setMS(song) {
       localStorage.setItem('jb-gapless', val ? '1' : '0');
       const badge = document.getElementById('np-badge');
       const mobBadge = document.getElementById('mob-np-badge');
-      toast(gaplessMode ? 'Gapless mode ON — album tracks merge into one stream' : 'Gapless mode OFF — normal per-track streaming');
-      // Update badge appearance to indicate mode
-      [badge, mobBadge].forEach(b => { if (b) b.title = gaplessMode ? 'Gapless ON — tap to disable' : 'Tap to enable Gapless mode'; });
+      const chk = document.getElementById('cfg-gapless');
+      if (chk) chk.checked = val;
+      toast(gaplessMode ? 'Gapless playback ON' : 'Gapless playback OFF');
+      [badge, mobBadge].forEach(b => { if (b) b.title = gaplessMode ? 'Gapless ON' : 'Gapless OFF'; });
     }
     gaplessMode = localStorage.getItem('jb-gapless') === '1';
+    document.getElementById('cfg-gapless').addEventListener('change', e => setGapless(e.target.checked));
     document.getElementById('np-badge').addEventListener('click', () => setGapless(!gaplessMode));
     document.getElementById('mob-np-badge').addEventListener('click', e => { e.stopPropagation(); setGapless(!gaplessMode); });
 
     // ── SETTINGS ──────────────────────────────────────────────────────────────────
-    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('sp').classList.add('show'); }
+    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('cfg-gapless').checked = gaplessMode; document.getElementById('sp').classList.add('show'); }
     document.getElementById('setbtn').addEventListener('click', showSet);
     document.getElementById('empty-set').addEventListener('click', showSet);
     document.getElementById('sclose').addEventListener('click', () => document.getElementById('sp').classList.remove('show'));
