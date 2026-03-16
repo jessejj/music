@@ -661,6 +661,9 @@ function handleHlsGenerate() {
     // Clean up old HLS sessions before creating a new one
     hlsCleanup();
 
+    // Kill any running HLS ffmpeg process from a previous request
+    hlsKillPrevious();
+
     // Create session directory
     $sessionId = bin2hex(random_bytes(16));
     $sessionDir = HLS_DIR . '/' . $sessionId;
@@ -733,12 +736,20 @@ function handleHlsGenerate() {
         echo json_encode(['error' => 'ffmpeg launch failed']);
         return;
     }
+    // Record PID so a subsequent request can kill this process
+    $status = proc_get_status($proc);
+    if ($status && $status['pid']) {
+        @file_put_contents(HLS_DIR . '/.ffmpeg.pid', $status['pid']);
+    }
     fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]);
     $stderr = stream_get_contents($pipes[2]);
     fclose($pipes[1]);
     fclose($pipes[2]);
     $exitCode = proc_close($proc);
+
+    // Clear PID file now that ffmpeg has finished
+    @unlink(HLS_DIR . '/.ffmpeg.pid');
 
     // Clean up concat list (segments remain)
     @unlink($listFile);
@@ -865,6 +876,24 @@ function findFfmpeg() {
     $which = @shell_exec('which ffmpeg 2>/dev/null');
     if ($which) return trim($which);
     return null;
+}
+
+// Kill any previously running HLS ffmpeg process.
+// Only one HLS generation should run at a time to avoid CPU spikes.
+function hlsKillPrevious() {
+    $pidFile = HLS_DIR . '/.ffmpeg.pid';
+    if (!file_exists($pidFile)) return;
+    $pid = (int)trim(file_get_contents($pidFile));
+    if ($pid > 0) {
+        // Kill the process group to also stop any child processes
+        @posix_kill($pid, 15); // SIGTERM
+        // Brief wait, then force-kill if still running
+        usleep(200000); // 200ms
+        if (@posix_kill($pid, 0)) { // check if still alive
+            @posix_kill($pid, 9); // SIGKILL
+        }
+    }
+    @unlink($pidFile);
 }
 
 // Clean up HLS session directories older than HLS_MAX_AGE

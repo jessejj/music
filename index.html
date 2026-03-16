@@ -2782,11 +2782,24 @@
     // Requests the server to generate an HLS playlist + segments for the album.
     // Returns the URL to the .m3u8 playlist, which Safari plays natively via <audio>.
     // This avoids long-lived HTTP responses that caused timeouts with album_stream.
-    let _hlsSession = null; // { session, token, expires }
+    let _hlsSession = null;          // { session, token, expires }
+    let _hlsAbort = null;             // AbortController for in-flight HLS generation
+    let _hlsGenerating = false;       // true while waiting for server to generate HLS
     async function hlsAlbumUrl(trackPaths) {
       if (!cfg.url || !cfg.apiKey || !online) return null;
+      // Abort any previous in-flight HLS generation request
+      if (_hlsAbort) { _hlsAbort.abort(); _hlsAbort = null; }
+      _hlsAbort = new AbortController();
+      _hlsGenerating = true;
       try {
-        const d = await apost('hls_generate', { paths: trackPaths });
+        const r = await fetch(apiBase() + '/api.php?action=hls_generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': cfg.apiKey || '' },
+          body: JSON.stringify({ paths: trackPaths }),
+          signal: _hlsAbort.signal,
+        });
+        if (!r.ok) throw new Error(`hls_generate: ${r.status}`);
+        const d = await r.json();
         if (!d.session || !d.token) return null;
         _hlsSession = { session: d.session, token: d.token, expires: d.expires };
         const params = new URLSearchParams({
@@ -2797,7 +2810,13 @@
           expires: d.expires,
         });
         return apiBase() + '/api.php?' + params.toString();
-      } catch (e) { console.warn('[HLS] generate failed:', e); return null; }
+      } catch (e) {
+        if (e.name === 'AbortError') { console.log('[HLS] generation aborted by new request'); return null; }
+        console.warn('[HLS] generate failed:', e); return null;
+      } finally {
+        _hlsGenerating = false;
+        _hlsAbort = null;
+      }
     }
 
     // ── SYNC ──────────────────────────────────────────────────────────────────────
@@ -3226,10 +3245,16 @@
 
 
     // ── PLAYBACK ──────────────────────────────────────────────────────────────────
+    let _playSongGeneration = 0; // monotonic counter to detect re-entrant playSong calls
     async function playSong(id, auto = true, userInitiated = false) {
       const song = songs.find(s => s.id === id); if (!song) return;
 
       if (userInitiated) freezeQueue(id);
+
+      // Abort any in-flight HLS generation from a previous playSong call
+      if (_hlsAbort) { _hlsAbort.abort(); _hlsAbort = null; }
+
+      const thisGeneration = ++_playSongGeneration;
 
       const newQi = queue.indexOf(id);
       if (newQi >= 0) qi = newQi;
@@ -3259,12 +3284,35 @@
                 .filter(s => s && s.album === song.album && (s.album_artist || s.artist) === (song.album_artist || song.artist));
               if (remaining.length > 1) {
                 const albumPaths = remaining.map(s => s.path);
+                // Start single-track streaming immediately while HLS generates in parallel
+                let fallbackSrc;
+                try { fallbackSrc = await streamUrl(song); } catch { fallbackSrc = null; }
+                // Check if user clicked another song while we were getting the stream URL
+                if (_playSongGeneration !== thisGeneration) return;
+                if (fallbackSrc) {
+                  // Start playback immediately with single-track stream
+                  src = fallbackSrc;
+                  setBadge('stream', '⋯ PREPARING', song);
+                  aud.volume = rgVolume(song);
+                  aud.src = src;
+                  if (auto) {
+                    try { await aud.play(); playing = true; } catch { playing = false; }
+                  }
+                  updateAllNP(song); setMS(song); renderList();
+                  schedulePlayCount(id); updNPActions();
+                  if (!getMeta(id).albumArtUrl) fetchArtForSong(song).then(() => { updateAllNP(song); setMS(song); });
+                }
+                // Generate HLS in the background — will replace playback when ready
+                toast('Preparing gapless album...');
                 const hlsSrc = await hlsAlbumUrl(albumPaths);
+                // Check if user clicked another song while HLS was generating
+                if (_playSongGeneration !== thisGeneration) return;
                 if (hlsSrc) {
+                  // Swap to HLS stream, resuming at approximately the same position
+                  const elapsed = aud.currentTime || 0;
                   src = hlsSrc;
                   _activeAlbumStreamSongIds = remaining.map(s => s.id);
                   _albumStreamPaths = albumPaths;
-                  // Build cumulative duration map for per-track metadata updates
                   _hlsTrackBoundaries = [];
                   let cumulative = 0;
                   for (const r of remaining) {
@@ -3272,9 +3320,25 @@
                     cumulative += (r.duration || 0);
                   }
                   _hlsCurrentTrackIdx = 0;
+                  aud.src = src;
+                  // Seek to where the user was in the first track
+                  aud.addEventListener('loadedmetadata', function _seekOnce() {
+                    aud.removeEventListener('loadedmetadata', _seekOnce);
+                    if (elapsed > 0.5) aud.currentTime = elapsed;
+                  });
+                  if (auto) {
+                    try { await aud.play(); playing = true; } catch { playing = false; }
+                  }
                   setBadge('stream', '⋯ HLS', song);
+                  toast('Gapless album ready');
                   usedAlbumStream = true;
+                  // Already set up everything — skip the normal src/play flow below
+                  updateAllNP(song); setMS(song); renderList();
+                  schedulePlayCount(id); updNPActions();
+                  return;
                 }
+                // HLS failed — already playing single-track, just continue
+                if (fallbackSrc) return;
               }
             } catch { /* fall through to normal stream */ }
           }
