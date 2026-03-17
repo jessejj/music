@@ -733,36 +733,22 @@ function handleHlsGenerate() {
     $expires = time() + 14400; // 4 hours
     $token = hash_hmac('sha256', $sessionId . ':' . $expires, HMAC_SECRET);
 
-    // Detect input format
-    $inputExt = strtolower(pathinfo($fullPaths[0], PATHINFO_EXTENSION));
-    $allSameExt = count(array_unique(array_map(function($p) {
-        return strtolower(pathinfo($p, PATHINFO_EXTENSION));
-    }, $fullPaths))) === 1;
-
     // Build ffmpeg command for HLS output
-    // Use AAC codec copy for m4a/aac inputs, re-encode otherwise
+    // Always re-encode for gapless HLS. The concat demuxer decodes each track
+    // (stripping per-track encoder delay/padding from iTunSMPB metadata) and
+    // re-encodes as one continuous AAC stream. Using -c:a copy would preserve
+    // each track's individual encoder priming samples, causing audible gaps.
     $playlistPath = $sessionDir . '/playlist.m3u8';
-    $segmentPattern = $sessionDir . '/seg%03d.m4s';
+    $segmentFile = $sessionDir . '/seg.m4s';
 
-    $canCopyAac = in_array($inputExt, ['m4a', 'aac']) && $allSameExt;
+    $args = [$ffmpeg, '-f', 'concat', '-safe', '0', '-i', $listFile,
+        '-vn', '-c:a', 'aac', '-b:a', '256k',
+    ];
 
-    $args = [$ffmpeg, '-f', 'concat', '-safe', '0', '-i', $listFile];
-
-    if ($canCopyAac) {
-        // Copy AAC audio, mux into fMP4 segments (preserves gapless metadata)
-        $args = array_merge($args, [
-            '-map', '0:a', '-c:a', 'copy',
-        ]);
-    } else {
-        // Re-encode to AAC for HLS compatibility
-        $args = array_merge($args, [
-            '-vn', '-c:a', 'aac', '-b:a', '256k',
-        ]);
-    }
-
-    // HLS output options — use fMP4 segments instead of MPEG-TS for gapless playback.
-    // fMP4 preserves edit lists and sample-accurate timing, avoiding the
-    // inter-segment silence gaps inherent in MPEG-TS audio framing.
+    // HLS output — fMP4 single-file mode.
+    // single_file writes all segments into one .m4s with byte-range addressing,
+    // avoiding thousands of per-frame files (audio-only fMP4 treats every AAC
+    // frame as a keyframe, so per-segment files are ~3KB each).
     $args = array_merge($args, [
         '-f', 'hls',
         '-hls_time', '6',
@@ -770,8 +756,8 @@ function handleHlsGenerate() {
         '-hls_playlist_type', 'vod',
         '-hls_segment_type', 'fmp4',
         '-hls_fmp4_init_filename', 'init.mp4',
-        '-hls_segment_filename', $segmentPattern,
-        '-hls_flags', 'independent_segments',
+        '-hls_segment_filename', $segmentFile,
+        '-hls_flags', 'single_file',
         $playlistPath,
     ]);
 
@@ -890,9 +876,19 @@ function handleHlsServe() {
             'token'   => $token,
             'expires' => $expires,
         ]);
-        // Rewrite both init segment (init.mp4) and media segments (seg*.m4s) to full URLs
-        $content = preg_replace_callback('/^((?:seg\d+\.m4s|init\.mp4|seg\d+\.ts))$/m', function($m) use ($baseUrl, $params) {
-            return $baseUrl . '?' . $params . '&file=' . $m[1];
+        // Rewrite segment/init filenames to full hls_serve URLs.
+        // Handles both multi-file (seg000.ts / seg000.m4s on bare lines) and
+        // single-file fMP4 (seg.m4s on bare lines, init.mp4 inside #EXT-X-MAP URI).
+        $makeUrl = function($file) use ($baseUrl, $params) {
+            return $baseUrl . '?' . $params . '&file=' . $file;
+        };
+        // Bare segment filenames (works for TS, multi-file fMP4, and single-file fMP4)
+        $content = preg_replace_callback('/^(seg[\d]*\.(?:m4s|ts))$/m', function($m) use ($makeUrl) {
+            return $makeUrl($m[1]);
+        }, $content);
+        // #EXT-X-MAP:URI="init.mp4" (fMP4 init segment)
+        $content = preg_replace_callback('/(#EXT-X-MAP:URI=")([^"]+)(")/', function($m) use ($makeUrl) {
+            return $m[1] . $makeUrl($m[2]) . $m[3];
         }, $content);
         header('Content-Length: ' . strlen($content));
         echo $content;
