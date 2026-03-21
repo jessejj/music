@@ -1261,11 +1261,6 @@
         justify-content: center;
       }
 
-      #theme-btn {
-        min-width: 38px;
-        min-height: 38px;
-      }
-
       #np-live-btn {
         min-height: 38px;
       }
@@ -1959,27 +1954,6 @@
     }
 
     /* ═══════════════════════════════════════════════════
-   THEME TOGGLE BUTTON
-═══════════════════════════════════════════════════ */
-    #theme-btn {
-      background: none;
-      border: none;
-      color: var(--text3);
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color .15s;
-      flex-shrink: 0;
-    }
-
-    #theme-btn:hover {
-      color: var(--text);
-    }
-
-    /* ═══════════════════════════════════════════════════
    STAR / FAVOURITE COLUMN
 ═══════════════════════════════════════════════════ */
     /* Grid columns are set dynamically per-view by renderColHdrs() */
@@ -2245,6 +2219,19 @@
       -webkit-overflow-scrolling: touch;
       padding-bottom: 20px;
     }
+    .cr-show-more-btn {
+      display: block;
+      width: calc(100% - 28px);
+      margin: 6px 14px;
+      padding: 10px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--accent);
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+    }
     /* Mobile: catalog search bar stays at TOP */
     @media (max-width: 700px) {
       #catalog-overlay {
@@ -2377,24 +2364,6 @@
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
         </svg>
         Sync
-      </button>
-      <button id="theme-btn" title="Toggle light/dark">
-        <svg id="theme-icon-dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2">
-          <circle cx="12" cy="12" r="5" />
-          <line x1="12" y1="1" x2="12" y2="3" />
-          <line x1="12" y1="21" x2="12" y2="23" />
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-          <line x1="1" y1="12" x2="3" y2="12" />
-          <line x1="21" y1="12" x2="23" y2="12" />
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-        </svg>
-        <svg id="theme-icon-light" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" style="display:none">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
       </button>
       <div id="search-wrap" style="position:relative;display:flex;align-items:center;flex-shrink:0">
         <input type="text" id="search" placeholder="Search…">
@@ -2760,6 +2729,13 @@
       <input id="catalog-input" type="text" placeholder="Search catalog…" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="catalog-cancel">Done</button>
     </div>
+    <div id="catalog-artist-bar" style="display:none;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button id="catalog-back-btn" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+      </button>
+      <span id="catalog-artist-title" style="font-size:15px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    </div>
     <div id="catalog-results">
       <div class="cr-empty">Search songs, artists, and albums</div>
     </div>
@@ -2808,11 +2784,11 @@
       <div class="sf"><label>API Key</label><input type="password" id="cfg-key" placeholder="your-secret-key"></div>
       <div class="stoggle-row">
         <div class="stoggle-label">
-          <strong>Gapless Playback</strong>
-          <span>Merges album tracks server-side for seamless playback. Recommended for iOS.</span>
+          <strong>Dark Mode</strong>
+          <span>Switch between light and dark appearance.</span>
         </div>
-        <label class="stoggle" title="Toggle gapless playback">
-          <input type="checkbox" id="cfg-gapless">
+        <label class="stoggle" title="Toggle dark mode">
+          <input type="checkbox" id="cfg-theme">
           <span class="stoggle-track"></span>
         </label>
       </div>
@@ -2841,12 +2817,11 @@
     function applyTheme(t) {
       theme = t;
       document.documentElement.setAttribute('data-theme', t);
-      document.getElementById('theme-icon-dark').style.display = t === 'dark' ? 'block' : 'none';
-      document.getElementById('theme-icon-light').style.display = t === 'light' ? 'block' : 'none';
+      const chk = document.getElementById('cfg-theme');
+      if (chk) chk.checked = t === 'dark';
       localStorage.setItem('jb-theme', t);
     }
     applyTheme(theme);
-    document.getElementById('theme-btn').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
 
     // ── INDEXEDDB ─────────────────────────────────────────────────────────────────
     let db;
@@ -2871,7 +2846,7 @@
     let songs = [], cachedIds = new Set(), pls = [], queue = [], qi = -1;
     let userLib = {}; // { [id]: { title, artist, album, added } } — user's personal library
     let playingId = null; // stable ID of the currently playing song — never changes on view switch
-    let playing = false, shuf = false, rep = 0, gaplessMode = false;
+    let playing = false, shuf = false, rep = 0;
     let origQueue = []; // natural order saved when shuffle is on
     let playbackView = 'all'; // view active when playback was last initiated via freezeQueue
     let view = 'all', selId = null, ctxId = null, sq = '';
@@ -2998,47 +2973,6 @@
       } catch { return null; }
     }
 
-    // ── HLS ALBUM STREAM ──────────────────────────────────────────────────────────
-    // Requests the server to generate an HLS playlist + segments for the album.
-    // Returns the URL to the .m3u8 playlist, which Safari plays natively via <audio>.
-    // This avoids long-lived HTTP responses that caused timeouts with album_stream.
-    let _hlsSession = null;          // { session, token, expires }
-    let _hlsAbort = null;             // AbortController for in-flight HLS generation
-    let _hlsGenerating = false;       // true while waiting for server to generate HLS
-    async function hlsAlbumUrl(trackPaths) {
-      if (!cfg.url || !cfg.apiKey || !online) return null;
-      // Abort any previous in-flight HLS generation request
-      if (_hlsAbort) { _hlsAbort.abort(); _hlsAbort = null; }
-      _hlsAbort = new AbortController();
-      _hlsGenerating = true;
-      try {
-        const r = await fetch(apiBase() + '/api.php?action=hls_generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-API-Key': cfg.apiKey || '' },
-          body: JSON.stringify({ paths: trackPaths }),
-          signal: _hlsAbort.signal,
-        });
-        if (!r.ok) throw new Error(`hls_generate: ${r.status}`);
-        const d = await r.json();
-        if (!d.session || !d.token) return null;
-        _hlsSession = { session: d.session, token: d.token, expires: d.expires };
-        const params = new URLSearchParams({
-          action: 'hls_serve',
-          session: d.session,
-          file: d.playlist,
-          token: d.token,
-          expires: d.expires,
-        });
-        return apiBase() + '/api.php?' + params.toString();
-      } catch (e) {
-        if (e.name === 'AbortError') { console.log('[HLS] generation aborted by new request'); return null; }
-        console.warn('[HLS] generate failed:', e); return null;
-      } finally {
-        _hlsGenerating = false;
-        _hlsAbort = null;
-      }
-    }
-
     // ── SYNC ──────────────────────────────────────────────────────────────────────
     async function syncLib() {
       if (!cfg.url || !cfg.apiKey) { showSet(); return; }
@@ -3079,7 +3013,16 @@
       console.log('[Sync] Fetching song meta (stars, play counts, skips)…');
       try {
         const d = await afetch('get_meta');
-        songMeta = d.meta || {};
+        const serverMeta = d.meta || {};
+        // Preserve locally-cached albumArtUrl values — the server doesn't store art URLs,
+        // so merging them back prevents art from disappearing after a sync.
+        for (const [id, m] of Object.entries(songMeta)) {
+          if (m.albumArtUrl && !serverMeta[id]?.albumArtUrl) {
+            if (!serverMeta[id]) serverMeta[id] = {};
+            serverMeta[id].albumArtUrl = m.albumArtUrl;
+          }
+        }
+        songMeta = serverMeta;
         const metaCount = Object.keys(songMeta).length;
         console.log(`[Sync] Got meta for ${metaCount} songs`);
         try { localStorage.setItem('jb-meta', JSON.stringify(songMeta)); } catch { }
@@ -3087,6 +3030,7 @@
         console.warn('[Sync] Meta fetch failed — using local cache');
         try { const l = localStorage.getItem('jb-meta'); if (l) songMeta = JSON.parse(l); } catch { }
       }
+      renderList();
     }
     async function pushMeta(patch) {
       // Merge patch into local meta
@@ -3232,6 +3176,7 @@
 
     // ── CATALOG SEARCH ────────────────────────────────────────────────────────────
     let catalogOpen = false;
+    let catalogArtistView = null; // artist name when drilling into catalog artist songs
 
     function openCatalog() {
       catalogOpen = true;
@@ -3245,11 +3190,94 @@
       // classList.add above) satisfies that requirement.
       input.focus();
       renderCatalogResults('');
+      // Fetch shared search misses from server (async, updates display when ready)
+      if (cfg.url && cfg.apiKey && online) {
+        afetch('get_search_misses').then(d => {
+          if (d && Array.isArray(d.misses)) {
+            // Merge server misses into local store (server is authoritative)
+            try { localStorage.setItem('jb-search-misses', JSON.stringify(d.misses)); } catch { }
+            // Re-render browse view if still open and not searching
+            const curQ = document.getElementById('catalog-input')?.value || '';
+            if (!curQ.trim()) renderCatalogResults('');
+          }
+        }).catch(() => {});
+      }
     }
     function closeCatalog() {
       catalogOpen = false;
+      catalogArtistView = null;
       document.getElementById('catalog-overlay').classList.remove('open');
       document.getElementById('catalog-input').value = '';
+      document.getElementById('catalog-artist-bar').style.display = 'none';
+      document.getElementById('catalog-search-bar').style.display = '';
+    }
+
+    function showCatalogArtist(artistName) {
+      catalogArtistView = artistName;
+      document.getElementById('catalog-search-bar').style.display = 'none';
+      document.getElementById('catalog-artist-bar').style.display = 'flex';
+      document.getElementById('catalog-artist-title').textContent = artistName;
+      renderCatalogArtistSongs(artistName);
+    }
+
+    function renderCatalogArtistSongs(artistName) {
+      const el = document.getElementById('catalog-results');
+      const artistSongs = songs.filter(s => s.artist === artistName || s.album_artist === artistName);
+      // Group by album, sort by album → disc → track
+      artistSongs.sort((a, b) => {
+        const al = (a.album || '').toLowerCase(), bl = (b.album || '').toLowerCase();
+        if (al !== bl) return al < bl ? -1 : 1;
+        if ((a.disc || 1) !== (b.disc || 1)) return (a.disc || 1) - (b.disc || 1);
+        return (a.track || 0) - (b.track || 0);
+      });
+      const frag = document.createDocumentFragment();
+      let lastAlbum = null;
+      artistSongs.forEach(s => {
+        if (s.album !== lastAlbum) {
+          lastAlbum = s.album;
+          const lbl = document.createElement('div');
+          lbl.className = 'cr-section-label';
+          lbl.textContent = s.album || 'Unknown Album';
+          frag.appendChild(lbl);
+        }
+        const row = document.createElement('div');
+        row.className = 'cr-row';
+        const inLibrary = inLib(s.id);
+        row.innerHTML = `
+          <div class="cr-info" style="cursor:pointer">
+            <div class="cr-title">${esc(s.title || 'Unknown')}</div>
+            <div class="cr-sub">${s.track ? `${s.track}. ` : ''}${esc(s.album || '')}</div>
+          </div>
+          <button class="cr-add-btn ${inLibrary ? 'in-lib' : ''}" title="${inLibrary ? 'In Library' : 'Add to Library'}">
+            ${inLibrary ? CHECK_SVG : '+'}
+          </button>`;
+        row.querySelector('.cr-info').addEventListener('click', () => {
+          playSong(s.id, true, true);
+        });
+        const addBtn = row.querySelector('.cr-add-btn');
+        addBtn.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (inLib(s.id)) {
+            delete userLib[String(s.id)];
+            await pushUserLib();
+            addBtn.classList.remove('in-lib'); addBtn.innerHTML = '+'; addBtn.title = 'Add to Library';
+          } else {
+            userLib[String(s.id)] = { title: s.title, artist: s.artist, album: s.album, added: Date.now() };
+            await pushUserLib();
+            addBtn.classList.add('in-lib'); addBtn.innerHTML = CHECK_SVG; addBtn.title = 'In Library';
+          }
+          renderList(); renderSB(); updCounts();
+        });
+        frag.appendChild(row);
+      });
+      if (!artistSongs.length) {
+        const empty = document.createElement('div');
+        empty.className = 'cr-empty';
+        empty.textContent = 'No songs found for this artist';
+        frag.appendChild(empty);
+      }
+      el.innerHTML = '';
+      el.appendChild(frag);
     }
 
     function renderCatalogResults(q) {
@@ -3286,7 +3314,6 @@
         );
 
         if (!matched.length) {
-          recordSearchMiss(lq);
           el.innerHTML = '<div class="cr-empty">No results found.<br><br><button class="tb accent" onclick="closeCatalog()" style="margin-top:8px">Done</button></div>';
           return;
         }
@@ -3322,77 +3349,98 @@
         lbl.textContent = label;
         frag.appendChild(lbl);
 
-        items.slice(0, 20).forEach(s => {
-          const row = document.createElement('div');
-          row.className = 'cr-row';
+        const PAGE = 20;
+        let shown = 0;
 
-          let titleText, subText;
-          if (mode === 'artist') {
-            titleText = s.artist;
-            const byArtist = songs.filter(x => x.artist === s.artist);
-            subText = `${byArtist.length} song${byArtist.length !== 1 ? 's' : ''}`;
-          } else if (mode === 'album') {
-            titleText = s.album;
-            subText = s.album_artist || s.artist;
-          } else {
-            titleText = s.title;
-            subText = [s.artist, s.album].filter(Boolean).join(' — ');
-          }
+        function addRows(fromIdx, count) {
+          items.slice(fromIdx, fromIdx + count).forEach(s => {
+            shown++;
+            const row = document.createElement('div');
+            row.className = 'cr-row';
 
-          const allSongIds = mode === 'artist'
-            ? songs.filter(x => x.artist === s.artist).map(x => x.id)
-            : mode === 'album'
-              ? songs.filter(x => x.album === s.album && (x.album_artist || x.artist) === (s.album_artist || s.artist)).map(x => x.id)
-              : [s.id];
-
-          const allInLib = allSongIds.length > 0 && allSongIds.every(id => inLib(id));
-
-          row.innerHTML = `
-            <div class="cr-info">
-              <div class="cr-title">${esc(titleText)}</div>
-              <div class="cr-sub">${esc(subText)}</div>
-            </div>
-            <button class="cr-add-btn ${allInLib ? 'in-lib' : ''}" title="${allInLib ? 'In Library' : 'Add to Library'}">
-              ${allInLib ? CHECK_SVG : '+'}
-            </button>`;
-
-          // Click row → play song / filter to artist / filter to album
-          row.querySelector('.cr-info').addEventListener('click', () => {
-            if (mode === 'song') {
-              closeCatalog(); playSong(s.id, true, true);
-            } else if (mode === 'artist') {
-              closeCatalog(); goToArtist(s.artist);
+            let titleText, subText;
+            if (mode === 'artist') {
+              titleText = s.artist;
+              const byArtist = songs.filter(x => x.artist === s.artist);
+              subText = `${byArtist.length} song${byArtist.length !== 1 ? 's' : ''}`;
+            } else if (mode === 'album') {
+              titleText = s.album;
+              subText = s.album_artist || s.artist;
             } else {
-              closeCatalog(); goToAlbum(s.album, s.album_artist || s.artist);
+              titleText = s.title;
+              subText = [s.artist, s.album].filter(Boolean).join(' — ');
             }
-          });
 
-          // Add/remove library button
-          const addBtn = row.querySelector('.cr-add-btn');
-          addBtn.addEventListener('click', async e => {
-            e.stopPropagation();
-            if (allInLib) {
-              for (const id of allSongIds) { delete userLib[String(id)]; }
-              await pushUserLib();
-              renderList(); renderSB(); updCounts();
-              addBtn.classList.remove('in-lib');
-              addBtn.innerHTML = '+';
-              addBtn.title = 'Add to Library';
-            } else {
-              for (const id of allSongIds) {
-                const song = songs.find(x => String(x.id) === String(id));
-                if (song) userLib[String(id)] = { title: song.title, artist: song.artist, album: song.album, added: Date.now() };
+            const allSongIds = mode === 'artist'
+              ? songs.filter(x => x.artist === s.artist).map(x => x.id)
+              : mode === 'album'
+                ? songs.filter(x => x.album === s.album && (x.album_artist || x.artist) === (s.album_artist || s.artist)).map(x => x.id)
+                : [s.id];
+
+            const allInLib = allSongIds.length > 0 && allSongIds.every(id => inLib(id));
+
+            row.innerHTML = `
+              <div class="cr-info">
+                <div class="cr-title">${esc(titleText)}</div>
+                <div class="cr-sub">${esc(subText)}</div>
+              </div>
+              <button class="cr-add-btn ${allInLib ? 'in-lib' : ''}" title="${allInLib ? 'In Library' : 'Add to Library'}">
+                ${allInLib ? CHECK_SVG : '+'}
+              </button>`;
+
+            // Click row → play song / drill into artist songs / filter to album
+            row.querySelector('.cr-info').addEventListener('click', () => {
+              if (mode === 'song') {
+                closeCatalog(); playSong(s.id, true, true);
+              } else if (mode === 'artist') {
+                showCatalogArtist(s.artist);
+              } else {
+                closeCatalog(); goToAlbum(s.album, s.album_artist || s.artist);
               }
-              await pushUserLib();
-              renderList(); renderSB(); updCounts();
-              addBtn.classList.add('in-lib');
-              addBtn.innerHTML = CHECK_SVG;
-              addBtn.title = 'In Library';
-            }
+            });
+
+            // Add/remove library button
+            const addBtn = row.querySelector('.cr-add-btn');
+            addBtn.addEventListener('click', async e => {
+              e.stopPropagation();
+              if (allInLib) {
+                for (const id of allSongIds) { delete userLib[String(id)]; }
+                await pushUserLib();
+                renderList(); renderSB(); updCounts();
+                addBtn.classList.remove('in-lib');
+                addBtn.innerHTML = '+';
+                addBtn.title = 'Add to Library';
+              } else {
+                for (const id of allSongIds) {
+                  const song = songs.find(x => String(x.id) === String(id));
+                  if (song) userLib[String(id)] = { title: song.title, artist: song.artist, album: song.album, added: Date.now() };
+                }
+                await pushUserLib();
+                renderList(); renderSB(); updCounts();
+                addBtn.classList.add('in-lib');
+                addBtn.innerHTML = CHECK_SVG;
+                addBtn.title = 'In Library';
+              }
+            });
+
+            frag.appendChild(row);
           });
 
-          frag.appendChild(row);
-        });
+          // Add "Show more" button if there are more items
+          if (shown < items.length) {
+            const moreBtn = document.createElement('button');
+            moreBtn.className = 'cr-show-more-btn';
+            moreBtn.textContent = `Show more (${items.length - shown} remaining)`;
+            moreBtn.addEventListener('click', () => {
+              const curShown = shown;
+              moreBtn.remove();
+              addRows(curShown, PAGE);
+            });
+            frag.appendChild(moreBtn);
+          }
+        }
+
+        addRows(0, PAGE);
       }
 
       mkSection('Songs', titleMatches, 'song');
@@ -3426,7 +3474,7 @@
         }
 
         // Search Requests
-        const misses = getSearchMisses().slice(0, 20);
+        const misses = getSearchMisses().slice(0, 10);
         if (misses.length) {
           const rlbl = document.createElement('div');
           rlbl.className = 'cr-section-label';
@@ -3595,8 +3643,26 @@
 
     document.getElementById('catalog-search-trigger').addEventListener('click', () => { openCatalog(); closeSidebar(); });
     document.getElementById('catalog-cancel').addEventListener('click', closeCatalog);
+    document.getElementById('catalog-back-btn').addEventListener('click', () => {
+      catalogArtistView = null;
+      document.getElementById('catalog-artist-bar').style.display = 'none';
+      document.getElementById('catalog-search-bar').style.display = '';
+      renderCatalogResults(document.getElementById('catalog-input').value || '');
+    });
     document.getElementById('catalog-input').addEventListener('input', e => {
       renderCatalogResults(e.target.value);
+    });
+    document.getElementById('catalog-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        if (q && !songs.some(s =>
+          (s.title || '').toLowerCase().includes(q.toLowerCase()) ||
+          (s.artist || '').toLowerCase().includes(q.toLowerCase()) ||
+          (s.album || '').toLowerCase().includes(q.toLowerCase())
+        )) {
+          recordSearchMiss(q);
+        }
+      }
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -3678,16 +3744,10 @@
 
 
     // ── PLAYBACK ──────────────────────────────────────────────────────────────────
-    let _playSongGeneration = 0; // monotonic counter to detect re-entrant playSong calls
     async function playSong(id, auto = true, userInitiated = false) {
       const song = songs.find(s => s.id === id); if (!song) return;
 
       if (userInitiated) freezeQueue(id);
-
-      // Abort any in-flight HLS generation from a previous playSong call
-      if (_hlsAbort) { _hlsAbort.abort(); _hlsAbort = null; }
-
-      const thisGeneration = ++_playSongGeneration;
 
       const newQi = queue.indexOf(id);
       if (newQi >= 0) qi = newQi;
@@ -3703,83 +3763,8 @@
           curUrl = URL.createObjectURL(cached.blob); src = curUrl;
           setBadge('', '● CACHED', song);
         } else if (online && cfg.url) {
-          // ── HLS ALBUM STREAM: gapless playback via HLS segments ──
-          // When gapless mode is enabled, generate an HLS playlist for the remaining
-          // album tracks. Safari plays .m3u8 natively; short segments start quickly
-          // and avoid the server timeout issues of the old album_stream approach.
-          let usedAlbumStream = false;
-          if (gaplessMode && !shuf && rep !== 2) {
-            try {
-              // Collect remaining tracks from the current album (same album, in order from qi)
-              const curQi = newQi < 0 ? 0 : newQi;
-              const remaining = queue.slice(curQi)
-                .map(sid => songs.find(s => s.id === sid))
-                .filter(s => s && s.album === song.album && (s.album_artist || s.artist) === (song.album_artist || song.artist));
-              if (remaining.length > 1) {
-                const albumPaths = remaining.map(s => s.path);
-                // Start single-track streaming immediately while HLS generates in parallel
-                let fallbackSrc;
-                try { fallbackSrc = await streamUrl(song); } catch { fallbackSrc = null; }
-                // Check if user clicked another song while we were getting the stream URL
-                if (_playSongGeneration !== thisGeneration) return;
-                if (fallbackSrc) {
-                  // Start playback immediately with single-track stream
-                  src = fallbackSrc;
-                  setBadge('stream', '⋯ PREPARING', song);
-                  aud.volume = rgVolume(song);
-                  aud.src = src;
-                  if (auto) {
-                    try { await aud.play(); playing = true; } catch { playing = false; }
-                  }
-                  updateAllNP(song); setMS(song); renderList();
-                  schedulePlayCount(id); updNPActions();
-                  if (!getMeta(id).albumArtUrl) fetchArtForSong(song).then(() => { updateAllNP(song); setMS(song); });
-                }
-                // Generate HLS in the background — will replace playback when ready
-                toast('Preparing gapless album...');
-                const hlsSrc = await hlsAlbumUrl(albumPaths);
-                // Check if user clicked another song while HLS was generating
-                if (_playSongGeneration !== thisGeneration) return;
-                if (hlsSrc) {
-                  // Swap to HLS stream, resuming at approximately the same position
-                  const elapsed = aud.currentTime || 0;
-                  src = hlsSrc;
-                  _activeAlbumStreamSongIds = remaining.map(s => s.id);
-                  _albumStreamPaths = albumPaths;
-                  _hlsTrackBoundaries = [];
-                  let cumulative = 0;
-                  for (const r of remaining) {
-                    _hlsTrackBoundaries.push({ id: r.id, start: cumulative, end: cumulative + (r.duration || 0) });
-                    cumulative += (r.duration || 0);
-                  }
-                  _hlsCurrentTrackIdx = 0;
-                  aud.src = src;
-                  // Seek to where the user was in the first track
-                  aud.addEventListener('loadedmetadata', function _seekOnce() {
-                    aud.removeEventListener('loadedmetadata', _seekOnce);
-                    if (elapsed > 0.5) aud.currentTime = elapsed;
-                  });
-                  if (auto) {
-                    try { await aud.play(); playing = true; } catch { playing = false; }
-                  }
-                  setBadge('stream', '⋯ HLS', song);
-                  toast('Gapless album ready');
-                  usedAlbumStream = true;
-                  // Already set up everything — skip the normal src/play flow below
-                  updateAllNP(song); setMS(song); renderList();
-                  schedulePlayCount(id); updNPActions();
-                  return;
-                }
-                // HLS failed — already playing single-track, just continue
-                if (fallbackSrc) return;
-              }
-            } catch { /* fall through to normal stream */ }
-          }
-          if (!usedAlbumStream) { _activeAlbumStreamSongIds = null; _albumStreamPaths = null; _hlsTrackBoundaries = null; _hlsCurrentTrackIdx = -1; }
-          if (!usedAlbumStream) {
-            try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING', song); }
-            catch { toast('Stream failed'); return; }
-          }
+          try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING', song); }
+          catch { toast('Stream failed'); return; }
         } else { toast('Not cached & offline'); return; }
 
         aud.volume = rgVolume(song);
@@ -3928,12 +3913,7 @@ function setMS(song) {
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
   navigator.mediaSession.setActionHandler('seekto', d => {
     if (d.seekTime == null) return;
-    if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-      const b = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-      aud.currentTime = b.start + Math.min(d.seekTime, b.end - b.start);
-    } else {
-      aud.currentTime = d.seekTime;
-    }
+    aud.currentTime = d.seekTime;
   });
 }
 
@@ -3978,32 +3958,11 @@ function setMS(song) {
         const skippedId = queue[qi];
         if (aud.currentTime > 3) recordSkip(skippedId);
       }
-      // During HLS album playback, seek to next track within the stream
-      if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0 && _hlsCurrentTrackIdx < _hlsTrackBoundaries.length - 1) {
-        const nextBoundary = _hlsTrackBoundaries[_hlsCurrentTrackIdx + 1];
-        aud.currentTime = nextBoundary.start + 0.1;
-        return;
-      }
       qi = (qi + 1) % queue.length;
       playingId = queue[qi];
       playSong(queue[qi]);
     }
     function playPrev(userInitiated = false) {
-      // During HLS album playback, seek to start of current or previous track
-      if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-        const curBoundary = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-        const trackElapsed = aud.currentTime - curBoundary.start;
-        if (trackElapsed > 3) {
-          // More than 3s into track — restart current track
-          aud.currentTime = curBoundary.start + 0.05;
-          return;
-        } else if (_hlsCurrentTrackIdx > 0) {
-          // Go to previous track
-          const prevBoundary = _hlsTrackBoundaries[_hlsCurrentTrackIdx - 1];
-          aud.currentTime = prevBoundary.start + 0.05;
-          return;
-        }
-      }
       if (aud.currentTime > 3) { aud.currentTime = 0; return; }
       if (!queue.length) return;
       if (userInitiated && playing && qi >= 0) {
@@ -4017,44 +3976,11 @@ function setMS(song) {
 
     let _userPaused = false;
 
-    let _activeAlbumStreamSongIds = null; // track which songs are covered by current album stream
-    let _albumStreamPaths  = null;        // track paths for stream state tracking
-    let _hlsTrackBoundaries = null;       // [{id, start, end}, ...] cumulative seconds for each track in HLS stream
-    let _hlsCurrentTrackIdx = -1;         // index into _hlsTrackBoundaries of the currently audible track
-
     function _onEnded() {
       if (rep === 2) { aud.currentTime = 0; aud.play(); return; }
-      if (_activeAlbumStreamSongIds) {
-        // Album stream (HLS or legacy) ended — the entire merged album is done.
-        // Advance past all covered songs.
-        const lastId = _activeAlbumStreamSongIds[_activeAlbumStreamSongIds.length - 1];
-        const lastIdx = queue.indexOf(lastId);
-        _activeAlbumStreamSongIds = null; _albumStreamPaths = null;
-        _hlsTrackBoundaries = null; _hlsCurrentTrackIdx = -1; _hlsSession = null;
-        if (lastIdx >= 0 && lastIdx + 1 < queue.length) {
-          qi = lastIdx;
-          playingId = queue[qi + 1];
-          qi++;
-          playSong(queue[qi]);
-        }
-        // else: nothing after album, done
-      } else {
-        playNext();
-      }
+      playNext();
     }
-    function _onAudError() {
-      if (_activeAlbumStreamSongIds) {
-        console.log('[HLS/Stream] audio error during album stream, code:', aud.error?.code);
-        // Fall back to single-track streaming on HLS error
-        if (_hlsTrackBoundaries) {
-          console.log('[HLS] Falling back to single-track streaming');
-          const fallbackId = playingId;
-          _activeAlbumStreamSongIds = null; _albumStreamPaths = null;
-          _hlsTrackBoundaries = null; _hlsCurrentTrackIdx = -1; _hlsSession = null;
-          if (fallbackId) playSong(fallbackId);
-        }
-      }
-    }
+    function _onAudError() { }
     function _onPlay() {
       playing = true; _userPaused = false; updPBtn(); renderList();
     }
@@ -4065,66 +3991,6 @@ function setMS(song) {
       const curTime = aud.currentTime;
       const dur     = aud.duration;
       const isFinite_ = dur && isFinite(dur) && dur > 0;
-
-      // ── HLS track boundary detection ──
-      // When playing an HLS album stream, detect when playback crosses from one
-      // track to the next and update now-playing metadata, volume (ReplayGain),
-      // and queue position accordingly.
-      if (_hlsTrackBoundaries && _hlsTrackBoundaries.length > 0) {
-        let newIdx = _hlsCurrentTrackIdx;
-        for (let i = 0; i < _hlsTrackBoundaries.length; i++) {
-          const b = _hlsTrackBoundaries[i];
-          if (curTime >= b.start && (i === _hlsTrackBoundaries.length - 1 || curTime < _hlsTrackBoundaries[i + 1].start)) {
-            newIdx = i; break;
-          }
-        }
-        if (newIdx !== _hlsCurrentTrackIdx && newIdx >= 0) {
-          _hlsCurrentTrackIdx = newIdx;
-          const trackId = _hlsTrackBoundaries[newIdx].id;
-          const trackSong = songs.find(s => s.id === trackId);
-          if (trackSong) {
-            // Update now-playing display and MediaSession
-            playingId = trackId;
-            const newQi = queue.indexOf(trackId);
-            if (newQi >= 0) qi = newQi;
-            updateAllNP(trackSong);
-            setMS(trackSong);
-            aud.volume = rgVolume(trackSong);
-            schedulePlayCount(trackId);
-            updNPActions();
-            if (!getMeta(trackId).albumArtUrl) fetchArtForSong(trackSong).then(() => { updateAllNP(trackSong); setMS(trackSong); });
-            renderList();
-          }
-        }
-        // Show per-track progress within the HLS stream
-        if (newIdx >= 0 && newIdx < _hlsTrackBoundaries.length) {
-          const b = _hlsTrackBoundaries[newIdx];
-          const trackElapsed = curTime - b.start;
-          const trackDur = b.end - b.start;
-          if (trackDur > 0) {
-            const p = (trackElapsed / trackDur) * 100;
-            document.getElementById('pf').style.width = p + '%';
-            document.getElementById('pt').style.left = p + '%';
-            document.getElementById('mob-pf').style.width = p + '%';
-            document.getElementById('np-panel-pf').style.width = p + '%';
-            try {
-              if (aud.buffered.length > 0) {
-                const buffEnd = aud.buffered.end(aud.buffered.length - 1);
-                const buffPct = Math.min(100, ((buffEnd - b.start) / trackDur) * 100);
-                const bf = document.getElementById('prog-buffered');
-                if (bf) bf.style.width = buffPct + '%';
-              }
-            } catch {}
-          }
-          document.getElementById('tc').textContent = fmt(trackElapsed);
-          document.getElementById('np-panel-cur').textContent = fmt(trackElapsed);
-          document.getElementById('tt').textContent = fmt(trackDur);
-          document.getElementById('np-panel-tot').textContent = fmt(trackDur);
-          if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && trackDur > 0)
-            try { navigator.mediaSession.setPositionState({ duration: trackDur, playbackRate: 1, position: trackElapsed }); } catch {}
-          return; // skip default progress handling
-        }
-      }
 
       if (isFinite_) {
         const p = (curTime / dur) * 100;
@@ -5355,8 +5221,25 @@ function setMS(song) {
       if (pls.length) {
         addSection('Playlists');
         pls.forEach(pl => {
-          addItem(String(pl.id), pl.name, (pl.sids || []).length,
-            '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>');
+          const el = document.createElement('div');
+          el.className = 'mob-nav-item';
+          el.innerHTML = `
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+            <span class="mob-nav-label">${esc(pl.name)}</span>
+            <span class="mob-nav-badge">${(pl.sids || []).length}</span>
+            <span class="mob-nav-chevron">›</span>`;
+          el.addEventListener('click', () => {
+            mobileNavMode = false;
+            mobileAlbumDrilldown = null;
+            mobileArtistDrilldown = null;
+            switchView(String(pl.id));
+          });
+          // Long-press to rename
+          let plPressTimer;
+          el.addEventListener('touchstart', () => { plPressTimer = setTimeout(() => { showPlCtx(60, el.getBoundingClientRect().bottom, pl.id); }, 600); }, { passive: true });
+          el.addEventListener('touchend', () => clearTimeout(plPressTimer), { passive: true });
+          el.addEventListener('touchmove', () => clearTimeout(plPressTimer), { passive: true });
+          frag.appendChild(el);
         });
       }
 
@@ -5612,12 +5495,7 @@ function setMS(song) {
     document.getElementById('np-panel-prog').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
       const pct = (e.clientX - r.left) / r.width;
-      if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-        const b = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-        aud.currentTime = b.start + pct * (b.end - b.start);
-      } else if (aud.duration) {
-        aud.currentTime = pct * aud.duration;
-      }
+      if (aud.duration) aud.currentTime = pct * aud.duration;
     });
     document.getElementById('np-panel-vt').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -5882,12 +5760,7 @@ function setMS(song) {
     document.getElementById('prog').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
       const pct = (e.clientX - r.left) / r.width;
-      if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-        const b = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-        aud.currentTime = b.start + pct * (b.end - b.start);
-      } else if (aud.duration) {
-        aud.currentTime = pct * aud.duration;
-      }
+      if (aud.duration) aud.currentTime = pct * aud.duration;
     });
     document.getElementById('vt').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -5902,22 +5775,8 @@ function setMS(song) {
       if (e.code === 'Space') { e.preventDefault(); document.getElementById('pbtn').click(); }
       if (e.code === 'ArrowRight' && e.metaKey) playNext(true);
       if (e.code === 'ArrowLeft' && e.metaKey) playPrev(true);
-      if (e.code === 'ArrowRight') {
-        if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-          const b = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-          aud.currentTime = Math.min(b.end - 0.1, aud.currentTime + 5);
-        } else {
-          aud.currentTime = Math.min(aud.duration || 0, aud.currentTime + 5);
-        }
-      }
-      if (e.code === 'ArrowLeft') {
-        if (_hlsTrackBoundaries && _hlsCurrentTrackIdx >= 0) {
-          const b = _hlsTrackBoundaries[_hlsCurrentTrackIdx];
-          aud.currentTime = Math.max(b.start, aud.currentTime - 5);
-        } else {
-          aud.currentTime = Math.max(0, aud.currentTime - 5);
-        }
-      }
+      if (e.code === 'ArrowRight') { aud.currentTime = Math.min(aud.duration || 0, aud.currentTime + 5); }
+      if (e.code === 'ArrowLeft') { aud.currentTime = Math.max(0, aud.currentTime - 5); }
       if (e.key === 'Escape') { closeNPPanel(); }
     });
 
@@ -6005,24 +5864,9 @@ function setMS(song) {
     document.getElementById('mok').addEventListener('click', () => { const v = document.getElementById('mi').value.trim(); if (v && mcb) mcb(v); document.getElementById('mo').classList.remove('show'); });
     document.getElementById('mi').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('mok').click(); if (e.key === 'Escape') document.getElementById('mcancel').click(); });
 
-    // ── GAPLESS / ALBUM STREAM TOGGLE ────────────────────────────────────────────
-    function setGapless(val) {
-      gaplessMode = val;
-      localStorage.setItem('jb-gapless', val ? '1' : '0');
-      const badge = document.getElementById('np-badge');
-      const mobBadge = document.getElementById('mob-np-badge');
-      const chk = document.getElementById('cfg-gapless');
-      if (chk) chk.checked = val;
-      toast(gaplessMode ? 'Gapless playback ON' : 'Gapless playback OFF');
-      [badge, mobBadge].forEach(b => { if (b) b.title = gaplessMode ? 'Gapless ON' : 'Gapless OFF'; });
-    }
-    gaplessMode = localStorage.getItem('jb-gapless') === '1';
-    document.getElementById('cfg-gapless').addEventListener('change', e => setGapless(e.target.checked));
-    document.getElementById('np-badge').addEventListener('click', () => setGapless(!gaplessMode));
-    document.getElementById('mob-np-badge').addEventListener('click', e => { e.stopPropagation(); setGapless(!gaplessMode); });
-
     // ── SETTINGS ──────────────────────────────────────────────────────────────────
-    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('cfg-gapless').checked = gaplessMode; document.getElementById('sp').classList.add('show'); }
+    document.getElementById('cfg-theme').addEventListener('change', e => applyTheme(e.target.checked ? 'dark' : 'light'));
+    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('cfg-theme').checked = theme === 'dark'; document.getElementById('sp').classList.add('show'); }
     document.getElementById('setbtn').addEventListener('click', showSet);
     document.getElementById('empty-set').addEventListener('click', showSet);
     document.getElementById('sclose').addEventListener('click', () => document.getElementById('sp').classList.remove('show'));
