@@ -1233,8 +1233,14 @@
         pointer-events: none; /* clicks pass through to toolbar */
         white-space: nowrap;
         max-width: 55vw;
+        display: block;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      /* Settings gear always pinned to the right */
+      #setbtn {
+        margin-left: auto;
       }
 
       /* Hide sync pill on mobile — only show when active (syncing) or error */
