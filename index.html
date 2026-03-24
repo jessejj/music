@@ -407,6 +407,7 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
     }
 
     #lw::-webkit-scrollbar {
@@ -449,6 +450,29 @@
     .sr.sel {
       background: var(--sel-bg) !important;
     }
+    .sr.msel {
+      background: var(--sel-bg) !important;
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+
+    /* Multi-select action bar */
+    #msel-bar {
+      display: none;
+      position: sticky;
+      bottom: 0;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--bg2);
+      border-top: 1px solid var(--border2);
+      box-shadow: 0 -2px 12px var(--shadow);
+      flex-shrink: 0;
+      z-index: 5;
+    }
+    #msel-bar.show { display: flex; }
+    #msel-count { font-size: 12px; color: var(--text2); white-space: nowrap; }
+    #msel-bar .tb { font-size: 11px; padding: 3px 9px; min-height: 26px; }
+    @media (max-width: 700px) { #msel-bar { display: none !important; } }
 
     .sr.now {
       background: var(--green-bg) !important;
@@ -1168,6 +1192,15 @@
       display: none;
     }
 
+    /* Mobile nav strip and back bar — hidden on desktop */
+    #mob-nav {
+      display: none;
+    }
+
+    #mob-back-bar {
+      display: none;
+    }
+
     #mob-search-bar {
       display: none;
     }
@@ -1206,26 +1239,77 @@
         padding-bottom: max(4px, env(safe-area-inset-bottom));
       }
 
-      /* Toolbar mobile layout */
+      /* Toolbar mobile layout — brand absolutely centered, immune to asymmetric side elements */
       #toolbar {
         padding: 0 10px;
         gap: 6px;
+        position: relative;
       }
 
       #tb-brand {
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: .06em;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        flex: none;
+        pointer-events: none; /* clicks pass through to toolbar */
+        white-space: nowrap;
+        max-width: 55vw;
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
-      #menu-btn {
-        display: flex;
-        min-width: 38px;
-        min-height: 38px;
+      /* Bell + gear pinned to the right as a pair */
+      #inbox-btn {
+        margin-left: auto;
       }
 
+      /* Hide sync pill on mobile by default; .mob-home class on toolbar reveals it at left */
       #sync-status {
+        display: none;
+      }
+      /* Home screen: pill visible at far left, tappable */
+      #toolbar.mob-home #sync-status {
         display: flex;
+        position: static;
+        transform: none;
+        cursor: pointer;
+        font-size: 10px;
+        padding: 2px 8px;
+      }
+      /* Loading/error: always show (even off home), centred in toolbar */
+      #sync-status.loading,
+      #sync-status.err {
+        display: flex;
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
         font-size: 9.5px;
         padding: 2px 6px;
+        cursor: default;
+      }
+      /* On home screen, loading/error stay at left (not centred) */
+      #toolbar.mob-home #sync-status.loading,
+      #toolbar.mob-home #sync-status.err {
+        position: static;
+        transform: none;
+        cursor: pointer;
+      }
+
+      /* #menu-btn repurposed as ← Library back button on mobile; shown/hidden via JS */
+      #menu-btn {
+        display: none; /* JS shows it when not in nav mode */
+        min-width: 38px;
+        min-height: 38px;
+        gap: 3px;
+        font-size: 13px;
+        color: var(--accent);
+        border-color: transparent;
+        background: transparent;
+        padding: 0 8px 0 4px;
       }
 
       #syncbtn {
@@ -1243,11 +1327,6 @@
         min-height: 38px;
         padding: 0;
         justify-content: center;
-      }
-
-      #theme-btn {
-        min-width: 38px;
-        min-height: 38px;
       }
 
       #np-live-btn {
@@ -1352,34 +1431,201 @@
         color: var(--green);
       }
 
-      /* Sidebar as slide-over */
+      /* Sidebar fully hidden on mobile — replaced by #mob-nav strip */
       #sidebar {
+        display: none !important;
+      }
+
+      /* mob-nav strip hidden on mobile — replaced by library home screen in #sl */
+      #mob-nav {
+        display: none;
+      }
+
+      /* ── MOBILE LIBRARY HOME NAV LIST ────────────────────────────────────────── */
+      .mob-nav-section {
+        font-family: 'DM Mono', monospace;
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        color: var(--text3);
+        padding: 20px 16px 8px;
+      }
+
+      .mob-nav-item {
         display: flex;
-        position: fixed;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: 260px;
-        z-index: 50;
-        transform: translateX(-100%);
-        transition: transform .25s ease;
-        box-shadow: 4px 0 24px var(--shadow);
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        min-height: 52px;
       }
 
-      #sidebar.open {
-        transform: translateX(0);
+      .mob-nav-item:active {
+        background: var(--bg3);
       }
 
-      #sidebar-overlay {
+      .mob-nav-item svg {
+        flex-shrink: 0;
+        color: var(--accent);
+      }
+
+      .mob-nav-label {
+        flex: 1;
+        font-size: 16px;
+        color: var(--text);
+        font-weight: 400;
+      }
+
+      .mob-nav-badge {
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        color: var(--text3);
+        flex-shrink: 0;
+      }
+
+      .mob-nav-chevron {
+        color: var(--text3);
+        font-size: 20px;
+        line-height: 1;
+        flex-shrink: 0;
+        margin-right: -2px;
+      }
+
+      /* ── MOBILE BACK BAR (album drilldown) ───────────────────────────────────── */
+      #mob-back-bar {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        background: var(--bg2);
+        border-bottom: 1px solid var(--border);
+        color: var(--accent);
+        font-size: 13px;
+        cursor: pointer;
+        flex-shrink: 0;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #mob-back-bar.show {
+        display: flex;
+      }
+
+      /* ── MOBILE ALBUM GRID ────────────────────────────────────────────────────── */
+      #mob-album-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        padding: 14px;
+      }
+
+      .mob-album-tile {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        cursor: pointer;
+        min-width: 0; /* critical: prevent grid item overflow */
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .mob-album-tile:active .mob-album-art-wrap {
+        opacity: 0.75;
+      }
+
+      /* Reliable square using padding-bottom trick (universal iOS/Safari compat) */
+      .mob-album-art-wrap {
+        position: relative;
+        width: 100%;
+        padding-bottom: 100%; /* 1:1 square */
+        border-radius: 8px;
+        background: var(--bg3);
+        overflow: hidden;
+        transition: opacity .1s;
+        flex-shrink: 0;
+      }
+
+      .mob-album-art-inner {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .mob-album-art-inner img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
         display: block;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity .25s;
+        pointer-events: none;        /* prevent Safari treating it as a tappable image */
+        -webkit-touch-callout: none; /* suppress Safari long-press image popup */
+        -webkit-user-select: none;
+        user-select: none;
       }
 
-      #sidebar-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
+      .mob-album-name {
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text);
+        line-height: 1.3;
+      }
+
+      .mob-album-artist {
+        font-size: 10px;
+        color: var(--text2);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+      }
+
+      .mob-album-count {
+        font-size: 9.5px;
+        color: var(--text3);
+        font-family: 'DM Mono', monospace;
+      }
+
+      /* ── MOBILE ARTIST ROWS ───────────────────────────────────────────────────── */
+      .mob-artist-row {
+        display: flex;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        gap: 10px;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .mob-artist-row:active {
+        background: var(--bg3);
+      }
+
+      .mob-artist-name {
+        flex: 1;
+        font-size: 14px;
+        color: var(--text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mob-artist-count {
+        font-size: 11px;
+        color: var(--text3);
+        font-family: 'DM Mono', monospace;
+        flex-shrink: 0;
+      }
+
+      .mob-artist-chevron {
+        color: var(--text3);
+        font-size: 18px;
+        flex-shrink: 0;
+        line-height: 1;
       }
 
       /* Mobile bottom player */
@@ -1532,6 +1778,12 @@
 
       #toast {
         bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)) + 10px);
+      }
+
+      /* Catalog overlay on mobile: cover toolbar but leave mob-player visible */
+      #catalog-overlay {
+        top: 0;
+        bottom: calc(var(--ph-mob) + max(0px, env(safe-area-inset-bottom)));
       }
 
       /* Full-screen now playing panel */
@@ -1780,27 +2032,6 @@
     }
 
     /* ═══════════════════════════════════════════════════
-   THEME TOGGLE BUTTON
-═══════════════════════════════════════════════════ */
-    #theme-btn {
-      background: none;
-      border: none;
-      color: var(--text3);
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color .15s;
-      flex-shrink: 0;
-    }
-
-    #theme-btn:hover {
-      color: var(--text);
-    }
-
-    /* ═══════════════════════════════════════════════════
    STAR / FAVOURITE COLUMN
 ═══════════════════════════════════════════════════ */
     /* Grid columns are set dynamically per-view by renderColHdrs() */
@@ -1810,10 +2041,6 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-    }
-
-    .s-flag-col svg {
-      /* transition removed — was causing scroll lag and graphical glitch after heart toggle */
     }
 
     /* Star */
@@ -2023,11 +2250,74 @@
 ═══════════════════════════════════════════════════ */
 
 
+    /* ── INBOX (WHAT'S NEW) ─────────────────────────────────────────────────── */
+    #inbox-btn { position: relative; }
+    #inbox-badge {
+      display: none;
+      position: absolute;
+      top: 4px; right: 4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 8px;
+      font-weight: 700;
+      min-width: 13px;
+      height: 13px;
+      border-radius: 7px;
+      padding: 0 2px;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      pointer-events: none;
+      font-family: 'DM Mono', monospace;
+    }
+    #inbox-badge.has-items { display: flex; }
+    #inbox-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 300;
+      flex-direction: column;
+    }
+    #inbox-overlay.open { display: flex; }
+    #inbox-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    #inbox-close {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 4px 2px;
+    }
+    #inbox-results {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 20px;
+    }
+    @media (max-width: 700px) {
+      #inbox-header { padding-top: max(14px, env(safe-area-inset-top)); }
+      #inbox-results { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+    }
+
     /* ── CATALOG SEARCH OVERLAY ────────────────────────────────────────────── */
     #catalog-overlay {
       display: none;
       position: fixed;
-      inset: 0;
+      top: var(--th);   /* sit below toolbar so now-playing is always visible */
+      right: 0;
+      bottom: var(--ph);
+      left: 0;
       background: var(--bg);
       z-index: 300;
       flex-direction: column;
@@ -2069,6 +2359,19 @@
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       padding-bottom: 20px;
+    }
+    .cr-show-more-btn {
+      display: block;
+      width: calc(100% - 28px);
+      margin: 6px 14px;
+      padding: 10px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--accent);
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
     }
     /* Mobile: catalog search bar stays at TOP */
     @media (max-width: 700px) {
@@ -2132,6 +2435,27 @@
       font-size: 13px;
       padding: 40px 20px;
     }
+    .cr-request-row { cursor: default; }
+    .cr-request-row:hover, .cr-request-row:active { background: none; }
+    .cr-lfm-key-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    .cr-lfm-key-input {
+      flex: 1;
+      font-size: 11px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: var(--text);
+      min-width: 0;
+    }
+    .cr-lfm-key-input:focus { border-color: var(--accent); outline: none; }
 
     /* ── MISSING SONG ROW ──────────────────────────────────────────────────── */
     .sr.missing {
@@ -2165,13 +2489,6 @@
           <line x1="3" y1="18" x2="21" y2="18" />
         </svg>
       </button>
-      <button class="tb icon-only" id="setbtn" title="Settings">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-      </button>
       <span id="tb-brand">Music</span>
       <span id="sync-status">—</span>
       <button class="tb accent" id="syncbtn">
@@ -2182,22 +2499,18 @@
         </svg>
         Sync
       </button>
-      <button id="theme-btn" title="Toggle light/dark">
-        <svg id="theme-icon-dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2">
-          <circle cx="12" cy="12" r="5" />
-          <line x1="12" y1="1" x2="12" y2="3" />
-          <line x1="12" y1="21" x2="12" y2="23" />
-          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-          <line x1="1" y1="12" x2="3" y2="12" />
-          <line x1="21" y1="12" x2="23" y2="12" />
-          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+      <button class="tb icon-only" id="inbox-btn" title="What's New">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
         </svg>
-        <svg id="theme-icon-light" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" style="display:none">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        <span id="inbox-badge"></span>
+      </button>
+      <button class="tb icon-only" id="setbtn" title="Settings">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
         </svg>
       </button>
       <div id="search-wrap" style="position:relative;display:flex;align-items:center;flex-shrink:0">
@@ -2234,6 +2547,15 @@
           <circle cx="18" cy="16" r="3" />
         </svg>
         Songs <span class="badge" id="lib-ct">0</span>
+      </div>
+      <div class="ni" data-view="artists" id="nav-artists">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        Artists <span class="badge" id="artists-ct">0</span>
       </div>
       <div class="ni" data-view="albums" id="nav-albums">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2288,6 +2610,17 @@
     <!-- MAIN -->
     <div id="main">
 
+      <!-- MOBILE NAV (hidden — nav is rendered in #sl via renderMobLibraryNav) -->
+      <div id="mob-nav"></div>
+
+      <!-- MOBILE BACK BAR (shown when drilling into an album on mobile) -->
+      <div id="mob-back-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        <span id="mob-back-label">Albums</span>
+      </div>
+
       <!-- Live session banner -->
 
       <div id="col-hdrs"><!-- populated by renderColHdrs() --></div>
@@ -2298,6 +2631,17 @@
       </div>
       <div id="lw">
         <div id="sl"></div>
+        <!-- Multi-select action bar — sticky at bottom of scroll area, desktop only -->
+        <div id="msel-bar">
+          <span id="msel-count"></span>
+          <button class="tb" id="msel-play">▶ Play</button>
+          <button class="tb" id="msel-next">Play Next</button>
+          <button class="tb" id="msel-addtoqueue">Add to Queue End</button>
+          <button class="tb" id="msel-cache">↓ Cache</button>
+          <button class="tb" id="msel-addpl">Add to Playlist…</button>
+          <button class="tb" id="msel-remove" style="color:var(--red);border-color:var(--red)">Remove from Library</button>
+          <button id="msel-clear" title="Clear selection" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;margin-left:auto">✕</button>
+        </div>
         <div id="empty">
           <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
             <path d="M9 18V5l12-2v13" />
@@ -2307,7 +2651,7 @@
           <h2 id="empty-h">Connect to your NAS</h2>
           <p id="empty-p">Configure your NAS URL and API key in Settings, then hit Sync.</p>
           <button class="tb accent" id="empty-set" style="margin-top:10px">Open Settings</button>
-          <button class="tb" id="empty-browse" style="margin-top:6px;display:none" onclick="openCatalog()">Browse Catalogue</button>
+          <button class="tb" id="empty-browse" style="margin-top:6px;display:none" onclick="openCatalog(sq)">Browse Catalogue</button>
         </div>
       </div>
     </div>
@@ -2534,6 +2878,32 @@
     <div class="ci danger" id="pl-ctx-delete">Delete Playlist</div>
   </div>
 
+  <!-- GROUP CONTEXT MENU (long-press on album tile or artist row) -->
+  <div id="mob-group-ctx" style="display:none;position:fixed;z-index:200;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 20px var(--shadow);padding:4px 0;min-width:200px">
+    <div style="padding:8px 14px 6px;font-size:12px;color:var(--text3);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="grp-ctx-label"></div>
+    <div class="cs"></div>
+    <div class="ci" id="grp-ctx-play">▶ Play All</div>
+    <div class="ci" id="grp-ctx-next">Play Next</div>
+    <div class="cs"></div>
+    <div class="ci" id="grp-ctx-cache">↓ Cache All</div>
+    <div class="ci danger" id="grp-ctx-uncache">Remove from Cache</div>
+    <div class="cs"></div>
+    <div id="grp-ctx-pls"></div>
+    <div class="cs" id="grp-ctx-lib-sep" style="display:none"></div>
+    <div class="ci danger" id="grp-ctx-lib-remove" style="display:none">Remove from Library</div>
+  </div>
+
+  <!-- WHAT'S NEW INBOX OVERLAY -->
+  <div id="inbox-overlay">
+    <div id="inbox-header">
+      <span>What's New</span>
+      <button id="inbox-close">Done</button>
+    </div>
+    <div id="inbox-results">
+      <div class="cr-empty">You're all caught up</div>
+    </div>
+  </div>
+
   <!-- CONTEXT MENU -->
   <!-- CATALOG SEARCH OVERLAY -->
   <div id="catalog-overlay">
@@ -2543,6 +2913,13 @@
       </svg>
       <input id="catalog-input" type="text" placeholder="Search catalog…" autocomplete="off" autocorrect="off" spellcheck="false">
       <button id="catalog-cancel">Done</button>
+    </div>
+    <div id="catalog-artist-bar" style="display:none;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <button id="catalog-back-btn" style="background:none;border:none;color:var(--accent);font-size:14px;cursor:pointer;padding:0;display:flex;align-items:center;gap:4px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+      </button>
+      <span id="catalog-artist-title" style="font-size:15px;font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     </div>
     <div id="catalog-results">
       <div class="cr-empty">Search songs, artists, and albums</div>
@@ -2592,11 +2969,11 @@
       <div class="sf"><label>API Key</label><input type="password" id="cfg-key" placeholder="your-secret-key"></div>
       <div class="stoggle-row">
         <div class="stoggle-label">
-          <strong>Gapless Playback</strong>
-          <span>Merges album tracks server-side for seamless playback. Recommended for iOS.</span>
+          <strong>Dark Mode</strong>
+          <span>Switch between light and dark appearance.</span>
         </div>
-        <label class="stoggle" title="Toggle gapless playback">
-          <input type="checkbox" id="cfg-gapless">
+        <label class="stoggle" title="Toggle dark mode">
+          <input type="checkbox" id="cfg-theme">
           <span class="stoggle-track"></span>
         </label>
       </div>
@@ -2625,12 +3002,11 @@
     function applyTheme(t) {
       theme = t;
       document.documentElement.setAttribute('data-theme', t);
-      document.getElementById('theme-icon-dark').style.display = t === 'dark' ? 'block' : 'none';
-      document.getElementById('theme-icon-light').style.display = t === 'light' ? 'block' : 'none';
+      const chk = document.getElementById('cfg-theme');
+      if (chk) chk.checked = t === 'dark';
       localStorage.setItem('jb-theme', t);
     }
     applyTheme(theme);
-    document.getElementById('theme-btn').addEventListener('click', () => applyTheme(theme === 'dark' ? 'light' : 'dark'));
 
     // ── INDEXEDDB ─────────────────────────────────────────────────────────────────
     let db;
@@ -2655,14 +3031,21 @@
     let songs = [], cachedIds = new Set(), pls = [], queue = [], qi = -1;
     let userLib = {}; // { [id]: { title, artist, album, added } } — user's personal library
     let playingId = null; // stable ID of the currently playing song — never changes on view switch
-    let playing = false, shuf = false, rep = 0, gaplessMode = false;
+    let playing = false, shuf = false, rep = 0;
     let origQueue = []; // natural order saved when shuffle is on
     let playbackView = 'all'; // view active when playback was last initiated via freezeQueue
+    let playbackAlbumDrilldown = null; // mobileAlbumDrilldown at time of last freezeQueue
+    let playbackArtistDrilldown = null; // mobileArtistDrilldown at time of last freezeQueue
     let view = 'all', selId = null, ctxId = null, sq = '';
+    let mobileAlbumDrilldown = null;  // {album, artistKey, label} when drilling into an album tile on mobile
+    let mobileArtistDrilldown = null; // {displayName, key} when viewing songs for a specific artist on mobile
+    let mobileNavMode = true;         // true = show library nav list on mobile (home screen)
+    let searchAllSongs = false;       // when true, search applies across all library songs, not just current view
     // Per-view sort state: each view remembers its own sort col/dir
     // Default sort cols per view (overridable by clicking headers)
     const VIEW_DEFAULTS = {
       'all':             { col: 'artist', dir: 1 },
+      'artists':         { col: 'artist', dir: 1 },
       'albums':          { col: 'artist', dir: 1 },
       'singles':         { col: 'artist', dir: 1 },
       'cached':          { col: 'artist', dir: 1 },
@@ -2797,6 +3180,7 @@
         await pullPlaylists();
         stampNewSongs();
         rebuildQ(); renderList(); renderSB();
+        checkForNewContent();
         console.log(`[Sync] Complete in ${Date.now()-t0}ms`);
       } catch (e) {
         if (e.name === 'AbortError') {
@@ -2812,13 +3196,41 @@
       }
     }
     function setSt(cls, txt) { const el = document.getElementById('sync-status'); el.className = cls; el.textContent = txt; }
+    // Fast pre-flight check: pure filesystem walk on server (no ffprobe). If files changed,
+    // the server invalidates its cache and we fall through to a full syncLib().
+    async function quickCheckLib() {
+      if (!cfg.url || !cfg.apiKey) { showSet(); return; }
+      try {
+        setSt('loading', 'Checking…');
+        const d = await afetch('library_check', {});
+        if (d.changed) {
+          console.log(`[QuickCheck] Library changed (${d.cached}→${d.found} files) — syncing`);
+          await syncLib();
+        } else {
+          console.log(`[QuickCheck] No changes (${d.found} files) — loading from cache`);
+          await syncLib(); // cache still valid; returns instantly via ETag/cache
+        }
+      } catch (e) {
+        console.warn('[QuickCheck] Failed, falling back to full sync:', e.message);
+        await syncLib();
+      }
+    }
 
     // ── SONG META (stars, flags, play history) ────────────────────────────────────
     async function pullMeta() {
       console.log('[Sync] Fetching song meta (stars, play counts, skips)…');
       try {
         const d = await afetch('get_meta');
-        songMeta = d.meta || {};
+        const serverMeta = d.meta || {};
+        // Preserve locally-cached albumArtUrl values — the server doesn't store art URLs,
+        // so merging them back prevents art from disappearing after a sync.
+        for (const [id, m] of Object.entries(songMeta)) {
+          if (m.albumArtUrl && !serverMeta[id]?.albumArtUrl) {
+            if (!serverMeta[id]) serverMeta[id] = {};
+            serverMeta[id].albumArtUrl = m.albumArtUrl;
+          }
+        }
+        songMeta = serverMeta;
         const metaCount = Object.keys(songMeta).length;
         console.log(`[Sync] Got meta for ${metaCount} songs`);
         try { localStorage.setItem('jb-meta', JSON.stringify(songMeta)); } catch { }
@@ -2826,6 +3238,7 @@
         console.warn('[Sync] Meta fetch failed — using local cache');
         try { const l = localStorage.getItem('jb-meta'); if (l) songMeta = JSON.parse(l); } catch { }
       }
+      renderList();
     }
     async function pushMeta(patch) {
       // Merge patch into local meta
@@ -2839,6 +3252,199 @@
     }
 
     function getMeta(id) { return songMeta[String(id)] || {}; }
+
+    // ── SEARCH MISS LOG ───────────────────────────────────────────────────────────
+    function getSearchMisses() {
+      try { return JSON.parse(localStorage.getItem('jb-search-misses')) || []; } catch { return []; }
+    }
+
+    // ── INBOX (WHAT'S NEW) ────────────────────────────────────────────────────────
+    function getInboxNotifs() {
+      try { return JSON.parse(localStorage.getItem('jb-inbox-notifs')) || []; } catch { return []; }
+    }
+    function saveInboxNotifs(arr) {
+      try { localStorage.setItem('jb-inbox-notifs', JSON.stringify(arr)); } catch { }
+    }
+    function getKnownSongIds() {
+      try { return new Set(JSON.parse(localStorage.getItem('jb-known-ids')) || []); } catch { return new Set(); }
+    }
+    function saveKnownSongIds(set) {
+      try { localStorage.setItem('jb-known-ids', JSON.stringify([...set])); } catch { }
+    }
+    function updateInboxBadge() {
+      const badge = document.getElementById('inbox-badge');
+      if (!badge) return;
+      const known = getKnownSongIds();
+      const newCount = known.size ? songs.filter(s => !known.has(String(s.id))).length : 0;
+      const n = getInboxNotifs().length + newCount;
+      badge.textContent = n > 99 ? '99+' : String(n);
+      badge.classList.toggle('has-items', n > 0);
+    }
+    // Called after every successful sync to resolve misses and detect new songs
+    function checkForNewContent() {
+      const misses = getSearchMisses();
+      const notifs = getInboxNotifs();
+      const resolved = [];
+      const remaining = [];
+      for (const miss of misses) {
+        const lq = miss.query.toLowerCase();
+        const found = songs.some(s =>
+          (s.title || '').toLowerCase().includes(lq) ||
+          (s.artist || '').toLowerCase().includes(lq) ||
+          (s.album || '').toLowerCase().includes(lq) ||
+          (s.album_artist || '').toLowerCase().includes(lq)
+        );
+        (found ? resolved : remaining).push(miss);
+      }
+      if (resolved.length) {
+        for (const miss of resolved) {
+          if (!notifs.some(n => n.query === miss.query)) {
+            notifs.push({ type: 'resolved-miss', query: miss.query, ts: Date.now() });
+          }
+        }
+        try { localStorage.setItem('jb-search-misses', JSON.stringify(remaining)); } catch { }
+        saveInboxNotifs(notifs);
+        swSyncData();
+      }
+      // First sync: silently initialise known-IDs so everything doesn't appear "new"
+      const known = getKnownSongIds();
+      if (!known.size && songs.length) {
+        saveKnownSongIds(new Set(songs.map(s => String(s.id))));
+      }
+      updateInboxBadge();
+    }
+
+    // Snapshot of new songs captured when inbox is opened (before marking as seen)
+    let _inboxNewSongs = [];
+    function openInbox() {
+      _inboxNewSongs = (() => {
+        const known = getKnownSongIds();
+        return known.size ? songs.filter(s => !known.has(String(s.id))) : [];
+      })();
+      // Mark current songs as seen immediately so badge clears
+      saveKnownSongIds(new Set(songs.map(s => String(s.id))));
+      updateInboxBadge();
+      renderInbox();
+      document.getElementById('inbox-overlay').classList.add('open');
+    }
+    function closeInbox() {
+      document.getElementById('inbox-overlay').classList.remove('open');
+    }
+    function renderInbox() {
+      const el = document.getElementById('inbox-results');
+      const notifs = getInboxNotifs();
+      const newSongs = _inboxNewSongs;
+      const frag = document.createDocumentFragment();
+
+      if (!notifs.length && !newSongs.length) {
+        const empty = document.createElement('div');
+        empty.className = 'cr-empty';
+        empty.innerHTML = '<div style="font-size:32px;margin-bottom:10px">🎵</div>You\'re all caught up';
+        frag.appendChild(empty);
+        el.innerHTML = ''; el.appendChild(frag); return;
+      }
+
+      // ── Now Available ──
+      if (notifs.length) {
+        const hdr = document.createElement('div');
+        hdr.className = 'cr-section-label';
+        hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding-right:14px';
+        const lbl = document.createElement('span');
+        lbl.textContent = `Now Available (${notifs.length})`;
+        hdr.appendChild(lbl);
+        if (notifs.length > 1) {
+          const clr = document.createElement('button');
+          clr.style.cssText = 'background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0';
+          clr.textContent = 'Clear all';
+          clr.addEventListener('click', () => { saveInboxNotifs([]); swSyncData(); renderInbox(); updateInboxBadge(); });
+          hdr.appendChild(clr);
+        }
+        frag.appendChild(hdr);
+        for (const notif of notifs) {
+          const row = document.createElement('div');
+          row.className = 'cr-row';
+          const info = document.createElement('div');
+          info.className = 'cr-info';
+          info.style.cursor = 'pointer';
+          const title = document.createElement('div');
+          title.className = 'cr-title';
+          title.textContent = `"${notif.query}" is now in the catalog`;
+          const sub = document.createElement('div');
+          sub.className = 'cr-sub';
+          sub.textContent = fmtDate(notif.ts) || 'Just added';
+          info.appendChild(title); info.appendChild(sub);
+          info.addEventListener('click', () => { closeInbox(); openCatalog(notif.query); });
+          const dismiss = document.createElement('button');
+          dismiss.style.cssText = 'background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;padding:0 2px;flex-shrink:0;line-height:1';
+          dismiss.textContent = '×'; dismiss.title = 'Dismiss';
+          dismiss.addEventListener('click', () => {
+            saveInboxNotifs(getInboxNotifs().filter(n => n.query !== notif.query));
+            swSyncData(); renderInbox(); updateInboxBadge();
+          });
+          row.appendChild(info); row.appendChild(dismiss);
+          frag.appendChild(row);
+        }
+      }
+
+      // ── Recently Added ──
+      if (newSongs.length) {
+        const hdr = document.createElement('div');
+        hdr.className = 'cr-section-label';
+        hdr.textContent = `Recently Added (${newSongs.length})`;
+        frag.appendChild(hdr);
+        // Group by artist → album for readability
+        const byArtist = {};
+        for (const s of newSongs) {
+          const a = s.artist || 'Unknown Artist';
+          if (!byArtist[a]) byArtist[a] = [];
+          byArtist[a].push(s);
+        }
+        const multiArtist = Object.keys(byArtist).length > 1;
+        for (const [artist, artistSongs] of Object.entries(byArtist).sort(([a],[b]) => a.localeCompare(b))) {
+          if (multiArtist) {
+            const albl = document.createElement('div');
+            albl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text2);padding:10px 14px 4px';
+            albl.textContent = artist;
+            frag.appendChild(albl);
+          }
+          for (const s of artistSongs) {
+            const row = document.createElement('div');
+            row.className = 'cr-row';
+            row.innerHTML = `<div class="cr-info" style="cursor:pointer">
+              <div class="cr-title">${esc(s.title || 'Unknown')}</div>
+              <div class="cr-sub">${esc(s.album || '')}${s.album && s.artist ? ' · ' : ''}${esc(s.artist || '')}</div>
+            </div>`;
+            row.addEventListener('click', () => { closeInbox(); playSong(s.id, true, true); });
+            frag.appendChild(row);
+          }
+        }
+      }
+
+      el.innerHTML = ''; el.appendChild(frag);
+    }
+    function recordSearchMiss(q) {
+      const key = q.trim().toLowerCase();
+      if (!key) return;
+      const misses = getSearchMisses();
+      const existing = misses.find(m => m.query.toLowerCase() === key);
+      if (existing) { existing.count++; existing.lastTs = Date.now(); }
+      else misses.push({ query: q.trim(), count: 1, lastTs: Date.now() });
+      misses.sort((a, b) => b.count - a.count);
+      try { localStorage.setItem('jb-search-misses', JSON.stringify(misses)); } catch { }
+      if (cfg.url && cfg.apiKey && online) {
+        apost('save_search_miss', { query: q.trim(), ts: Date.now() }).catch(() => {});
+      }
+      swSyncData();
+      // Request notification permission on first miss (requires user gesture context)
+      if (misses.length === 1 && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
+    function dismissSearchMiss(query) {
+      const misses = getSearchMisses().filter(m => m.query.toLowerCase() !== query.toLowerCase());
+      try { localStorage.setItem('jb-search-misses', JSON.stringify(misses)); } catch { }
+      swSyncData();
+    }
     function isStarred(id) { return !!getMeta(id).starred; }
     function playCount(id) { return getMeta(id).playCount || 0; }
     function lastPlayed(id) { return getMeta(id).lastPlayed || 0; }
@@ -2949,11 +3555,13 @@
 
     // ── CATALOG SEARCH ────────────────────────────────────────────────────────────
     let catalogOpen = false;
+    let catalogArtistView = null; // artist name when drilling into catalog artist songs
 
-    function openCatalog() {
+    function openCatalog(prefillQ) {
       catalogOpen = true;
       document.getElementById('catalog-overlay').classList.add('open');
       const input = document.getElementById('catalog-input');
+      if (prefillQ) { input.value = prefillQ; }
       // Focus + trigger keyboard immediately — the overlay is now visible (flex), so
       // we use a short rAF+timeout to let the browser paint the overlay before focusing.
       // iOS Safari requires focus() to be called synchronously within the user-gesture
@@ -2961,12 +3569,95 @@
       // won't appear. Calling focus() right here (overlay is already display:flex from
       // classList.add above) satisfies that requirement.
       input.focus();
+      renderCatalogResults(prefillQ || '');
+      // Fetch shared search misses from server (async, updates display when ready)
+      if (cfg.url && cfg.apiKey && online) {
+        afetch('get_search_misses').then(d => {
+          if (d && Array.isArray(d.misses)) {
+            // Merge server misses into local store (server is authoritative)
+            try { localStorage.setItem('jb-search-misses', JSON.stringify(d.misses)); } catch { }
+            // Re-render browse view if still open and not searching
+            const curQ = document.getElementById('catalog-input')?.value || '';
+            if (!curQ.trim()) renderCatalogResults('');
+          }
+        }).catch(() => {});
+      }
     }
     function closeCatalog() {
       catalogOpen = false;
+      catalogArtistView = null;
       document.getElementById('catalog-overlay').classList.remove('open');
       document.getElementById('catalog-input').value = '';
-      document.getElementById('catalog-results').innerHTML = '<div class="cr-empty">Search songs, artists, and albums</div>';
+      document.getElementById('catalog-artist-bar').style.display = 'none';
+      document.getElementById('catalog-search-bar').style.display = '';
+    }
+
+    function showCatalogArtist(artistName) {
+      catalogArtistView = artistName;
+      document.getElementById('catalog-search-bar').style.display = 'none';
+      document.getElementById('catalog-artist-bar').style.display = 'flex';
+      document.getElementById('catalog-artist-title').textContent = artistName;
+      renderCatalogArtistSongs(artistName);
+    }
+
+    function renderCatalogArtistSongs(artistName) {
+      const el = document.getElementById('catalog-results');
+      const artistSongs = songs.filter(s => s.artist === artistName || s.album_artist === artistName);
+      // Group by album, sort by album → disc → track
+      artistSongs.sort((a, b) => {
+        const al = (a.album || '').toLowerCase(), bl = (b.album || '').toLowerCase();
+        if (al !== bl) return al < bl ? -1 : 1;
+        if ((a.disc || 1) !== (b.disc || 1)) return (a.disc || 1) - (b.disc || 1);
+        return (a.track || 0) - (b.track || 0);
+      });
+      const frag = document.createDocumentFragment();
+      let lastAlbum = null;
+      artistSongs.forEach(s => {
+        if (s.album !== lastAlbum) {
+          lastAlbum = s.album;
+          const lbl = document.createElement('div');
+          lbl.className = 'cr-section-label';
+          lbl.textContent = s.album || 'Unknown Album';
+          frag.appendChild(lbl);
+        }
+        const row = document.createElement('div');
+        row.className = 'cr-row';
+        const inLibrary = inLib(s.id);
+        row.innerHTML = `
+          <div class="cr-info" style="cursor:pointer">
+            <div class="cr-title">${esc(s.title || 'Unknown')}</div>
+            <div class="cr-sub">${s.track ? `${s.track}. ` : ''}${esc(s.album || '')}</div>
+          </div>
+          <button class="cr-add-btn ${inLibrary ? 'in-lib' : ''}" title="${inLibrary ? 'In Library' : 'Add to Library'}">
+            ${inLibrary ? CHECK_SVG : '+'}
+          </button>`;
+        row.querySelector('.cr-info').addEventListener('click', () => {
+          playSong(s.id, true, true);
+        });
+        const addBtn = row.querySelector('.cr-add-btn');
+        addBtn.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (inLib(s.id)) {
+            delete userLib[String(s.id)];
+            await pushUserLib();
+            addBtn.classList.remove('in-lib'); addBtn.innerHTML = '+'; addBtn.title = 'Add to Library';
+          } else {
+            userLib[String(s.id)] = { title: s.title, artist: s.artist, album: s.album, added: Date.now() };
+            await pushUserLib();
+            addBtn.classList.add('in-lib'); addBtn.innerHTML = CHECK_SVG; addBtn.title = 'In Library';
+          }
+          renderList(); renderSB(); updCounts();
+        });
+        frag.appendChild(row);
+      });
+      if (!artistSongs.length) {
+        const empty = document.createElement('div');
+        empty.className = 'cr-empty';
+        empty.textContent = 'No songs found for this artist';
+        frag.appendChild(empty);
+      }
+      el.innerHTML = '';
+      el.appendChild(frag);
     }
 
     function renderCatalogResults(q) {
@@ -3038,91 +3729,424 @@
         lbl.textContent = label;
         frag.appendChild(lbl);
 
-        items.slice(0, 20).forEach(s => {
-          const row = document.createElement('div');
-          row.className = 'cr-row';
+        const PAGE = 20;
+        let shown = 0;
 
-          let titleText, subText;
-          if (mode === 'artist') {
-            titleText = s.artist;
-            const byArtist = songs.filter(x => x.artist === s.artist);
-            subText = `${byArtist.length} song${byArtist.length !== 1 ? 's' : ''}`;
-          } else if (mode === 'album') {
-            titleText = s.album;
-            subText = s.album_artist || s.artist;
-          } else {
-            titleText = s.title;
-            subText = [s.artist, s.album].filter(Boolean).join(' — ');
-          }
+        function addRows(fromIdx, count) {
+          items.slice(fromIdx, fromIdx + count).forEach(s => {
+            shown++;
+            const row = document.createElement('div');
+            row.className = 'cr-row';
 
-          const allSongIds = mode === 'artist'
-            ? songs.filter(x => x.artist === s.artist).map(x => x.id)
-            : mode === 'album'
-              ? songs.filter(x => x.album === s.album && (x.album_artist || x.artist) === (s.album_artist || s.artist)).map(x => x.id)
-              : [s.id];
-
-          const allInLib = allSongIds.length > 0 && allSongIds.every(id => inLib(id));
-
-          row.innerHTML = `
-            <div class="cr-info">
-              <div class="cr-title">${esc(titleText)}</div>
-              <div class="cr-sub">${esc(subText)}</div>
-            </div>
-            <button class="cr-add-btn ${allInLib ? 'in-lib' : ''}" title="${allInLib ? 'In Library' : 'Add to Library'}">
-              ${allInLib ? CHECK_SVG : '+'}
-            </button>`;
-
-          // Click row → play song / filter to artist / filter to album
-          row.querySelector('.cr-info').addEventListener('click', () => {
-            if (mode === 'song') {
-              closeCatalog(); playSong(s.id, true, true);
-            } else if (mode === 'artist') {
-              closeCatalog(); goToArtist(s.artist);
+            let titleText, subText;
+            if (mode === 'artist') {
+              titleText = s.artist;
+              const byArtist = songs.filter(x => x.artist === s.artist);
+              subText = `${byArtist.length} song${byArtist.length !== 1 ? 's' : ''}`;
+            } else if (mode === 'album') {
+              titleText = s.album;
+              subText = s.album_artist || s.artist;
             } else {
-              closeCatalog(); goToAlbum(s.album, s.album_artist || s.artist);
+              titleText = s.title;
+              subText = [s.artist, s.album].filter(Boolean).join(' — ');
             }
-          });
 
-          // Add/remove library button
-          const addBtn = row.querySelector('.cr-add-btn');
-          addBtn.addEventListener('click', async e => {
-            e.stopPropagation();
-            if (allInLib) {
-              for (const id of allSongIds) { delete userLib[String(id)]; }
-              await pushUserLib();
-              renderList(); renderSB(); updCounts();
-              addBtn.classList.remove('in-lib');
-              addBtn.innerHTML = '+';
-              addBtn.title = 'Add to Library';
-            } else {
-              for (const id of allSongIds) {
-                const song = songs.find(x => String(x.id) === String(id));
-                if (song) userLib[String(id)] = { title: song.title, artist: song.artist, album: song.album, added: Date.now() };
+            const allSongIds = mode === 'artist'
+              ? songs.filter(x => x.artist === s.artist).map(x => x.id)
+              : mode === 'album'
+                ? songs.filter(x => x.album === s.album && (x.album_artist || x.artist) === (s.album_artist || s.artist)).map(x => x.id)
+                : [s.id];
+
+            const allInLib = allSongIds.length > 0 && allSongIds.every(id => inLib(id));
+
+            row.innerHTML = `
+              <div class="cr-info">
+                <div class="cr-title">${esc(titleText)}</div>
+                <div class="cr-sub">${esc(subText)}</div>
+              </div>
+              <button class="cr-add-btn ${allInLib ? 'in-lib' : ''}" title="${allInLib ? 'In Library' : 'Add to Library'}">
+                ${allInLib ? CHECK_SVG : '+'}
+              </button>`;
+
+            // Click row: catalog songs only play if already in library (user adds via + first).
+            // Artist/album rows drill within the catalog as before.
+            row.querySelector('.cr-info').addEventListener('click', () => {
+              if (mode === 'song') {
+                if (inLib(s.id)) playSong(s.id, true, true); // play; now-playing bar updates without closing catalog
+              } else if (mode === 'artist') {
+                showCatalogArtist(s.artist);
+              } else {
+                closeCatalog(); goToAlbum(s.album, s.album_artist || s.artist);
               }
-              await pushUserLib();
-              renderList(); renderSB(); updCounts();
-              addBtn.classList.add('in-lib');
-              addBtn.innerHTML = CHECK_SVG;
-              addBtn.title = 'In Library';
-            }
+            });
+
+            // Add/remove library button
+            const addBtn = row.querySelector('.cr-add-btn');
+            addBtn.addEventListener('click', async e => {
+              e.stopPropagation();
+              if (allInLib) {
+                for (const id of allSongIds) { delete userLib[String(id)]; }
+                await pushUserLib();
+                renderList(); renderSB(); updCounts();
+                addBtn.classList.remove('in-lib');
+                addBtn.innerHTML = '+';
+                addBtn.title = 'Add to Library';
+              } else {
+                for (const id of allSongIds) {
+                  const song = songs.find(x => String(x.id) === String(id));
+                  if (song) userLib[String(id)] = { title: song.title, artist: song.artist, album: song.album, added: Date.now() };
+                }
+                await pushUserLib();
+                renderList(); renderSB(); updCounts();
+                addBtn.classList.add('in-lib');
+                addBtn.innerHTML = CHECK_SVG;
+                addBtn.title = 'In Library';
+              }
+            });
+
+            frag.appendChild(row);
           });
 
-          frag.appendChild(row);
+          // Add "Show more" button if there are more items
+          if (shown < items.length) {
+            const moreBtn = document.createElement('button');
+            moreBtn.className = 'cr-show-more-btn';
+            moreBtn.textContent = `Show more (${items.length - shown} remaining)`;
+            moreBtn.addEventListener('click', () => {
+              const curShown = shown;
+              moreBtn.remove();
+              addRows(curShown, PAGE);
+            });
+            frag.appendChild(moreBtn);
+          }
+        }
+
+        addRows(0, PAGE);
+      }
+
+      // ── LIBRARY RESULTS (search mode only) ───────────────────────────────────
+      if (!browsing) {
+        const libAll     = libSongs().filter(s => !s._missing);
+        const libIdSet   = new Set(libAll.map(s => String(s.id)));
+        const libFiltered = libAll.filter(s =>
+          (s.title  || '').toLowerCase().includes(lq) ||
+          (s.artist || '').toLowerCase().includes(lq) ||
+          (s.album  || '').toLowerCase().includes(lq) ||
+          (s.album_artist || '').toLowerCase().includes(lq)
+        );
+        const libSongMatches = libFiltered.filter(s => (s.title || '').toLowerCase().includes(lq));
+        const libArtistMap   = new Map();
+        const libAlbumMap    = new Map();
+        const libCompMap     = new Map();
+        libFiltered.forEach(s => {
+          const art = s.artist || '';
+          if (art && art.toLowerCase().includes(lq) && !libArtistMap.has(art.toLowerCase()))
+            libArtistMap.set(art.toLowerCase(), s);
+          const alb = s.album || '';
+          if (!alb) return;
+          const key = alb.toLowerCase() + '|||' + (s.album_artist || s.artist || '').toLowerCase();
+          if (s.section === 'compilations') {
+            if (!libCompMap.has(key)) libCompMap.set(key, s);
+          } else if (alb.toLowerCase().includes(lq) || (s.album_artist || s.artist || '').toLowerCase().includes(lq)) {
+            if (!libAlbumMap.has(key)) libAlbumMap.set(key, s);
+          }
         });
+
+        function mkLibSection(label, items, mode) {
+          if (!items.length) return;
+          const lbl = document.createElement('div');
+          lbl.className = 'cr-section-label';
+          lbl.textContent = label;
+          frag.appendChild(lbl);
+          items.forEach(s => {
+            const row = document.createElement('div');
+            row.className = 'cr-row';
+            let titleText, subText;
+            if (mode === 'artist') {
+              titleText = s.artist;
+              const n = libAll.filter(x => _groupArtist(x) === _groupArtist(s)).length;
+              subText = `${n} song${n !== 1 ? 's' : ''} in library`;
+            } else if (mode === 'album' || mode === 'compilation') {
+              titleText = s.album;
+              subText = s.album_artist || s.artist;
+            } else {
+              titleText = s.title;
+              subText = [s.artist, s.album].filter(Boolean).join(' — ');
+            }
+            row.innerHTML = `
+              <div class="cr-info">
+                <div class="cr-title">${esc(titleText)}</div>
+                <div class="cr-sub">${esc(subText)}</div>
+              </div>
+              <span style="font-size:10px;color:var(--text3);padding-right:6px;flex-shrink:0;white-space:nowrap">In Library</span>`;
+            row.addEventListener('click', () => {
+              closeCatalog();
+              mobileNavMode = false;
+              if (mode === 'song') {
+                view = 'all'; mobileAlbumDrilldown = null; mobileArtistDrilldown = null;
+                selId = s.id; renderList(); renderSB();
+                setTimeout(() => {
+                  const r = document.querySelector(`.sr[data-id="${CSS.escape(String(s.id))}"]`);
+                  if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }, 50);
+              } else if (mode === 'artist') {
+                view = 'artists'; mobileAlbumDrilldown = null;
+                mobileArtistDrilldown = { displayName: s.artist, key: _groupArtist(s) };
+                renderList(); renderSB();
+              } else if (mode === 'album') {
+                view = 'albums'; mobileArtistDrilldown = null;
+                mobileAlbumDrilldown = { album: (s.album || '').toLowerCase().trim(), artistKey: _groupArtist(s), label: s.album || 'Unknown' };
+                renderList(); renderSB();
+              } else {
+                view = 'compilations'; mobileArtistDrilldown = null;
+                mobileAlbumDrilldown = { album: (s.album || '').toLowerCase().trim(), artistKey: _groupArtist(s), label: s.album || 'Unknown' };
+                renderList(); renderSB();
+              }
+            });
+            frag.appendChild(row);
+          });
+        }
+
+        mkLibSection('Songs',        libSongMatches,              'song');
+        mkLibSection('Artists',      [...libArtistMap.values()],  'artist');
+        mkLibSection('Albums',       [...libAlbumMap.values()],   'album');
+        mkLibSection('Compilations', [...libCompMap.values()],    'compilation');
+
+        // Filter catalog song matches to exclude items already shown in library
+        titleMatches = titleMatches.filter(s => !libIdSet.has(String(s.id)));
+
+        // Divider before catalog results (only if there are library results AND catalog results)
+        const hasLibResults = libSongMatches.length || libArtistMap.size || libAlbumMap.size || libCompMap.size;
+        const hasCatalogResults = titleMatches.length || artistRows.length || albumRows.length;
+        if (hasLibResults && hasCatalogResults) {
+          const div = document.createElement('div');
+          div.className = 'cr-section-label';
+          div.textContent = 'From Catalog';
+          div.style.cssText = 'border-top:1px solid var(--border);margin-top:4px;padding-top:12px';
+          frag.appendChild(div);
+        }
       }
 
       mkSection('Songs', titleMatches, 'song');
       mkSection('Artists', artistRows, 'artist');
       mkSection('Albums', albumRows, 'album');
 
+      // ── BROWSE-ONLY SECTIONS ─────────────────────────────────────────────────
+      if (browsing) {
+        // "You Might Like" — catalog artists with unAdded songs, ranked by count
+        const libIds = new Set(Object.keys(userLib));
+        const artistPlays = {};
+        for (const id of libIds) {
+          const m = getMeta(id);
+          if (!m.playCount) continue;
+          const s = songs.find(x => String(x.id) === String(id));
+          if (s?.artist) artistPlays[s.artist] = (artistPlays[s.artist] || 0) + m.playCount;
+        }
+        if (Object.keys(artistPlays).length) {
+          const unaddedMap = new Map();
+          songs.forEach(s => {
+            if (!s.artist || libIds.has(String(s.id))) return;
+            const e = unaddedMap.get(s.artist);
+            if (!e) unaddedMap.set(s.artist, { count: 1, sample: s });
+            else e.count++;
+          });
+          const suggestions = [...unaddedMap.entries()]
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 10)
+            .map(([, v]) => v.sample);
+          mkSection('You Might Like', suggestions, 'artist');
+        }
+
+        // Search Requests
+        const misses = getSearchMisses().slice(0, 10);
+        if (misses.length) {
+          const rlbl = document.createElement('div');
+          rlbl.className = 'cr-section-label';
+          rlbl.textContent = 'Search Requests';
+          frag.appendChild(rlbl);
+          misses.forEach(({ query, count }) => {
+            const row = document.createElement('div');
+            row.className = 'cr-row cr-request-row';
+            row.innerHTML = `
+              <div class="cr-info">
+                <div class="cr-title">${esc(query)}</div>
+                <div class="cr-sub">searched ${count} time${count !== 1 ? 's' : ''} — not in catalog</div>
+              </div>
+              <button class="cr-add-btn" title="Dismiss" style="font-size:14px;line-height:1">✕</button>`;
+            row.querySelector('.cr-add-btn').addEventListener('click', e => {
+              e.stopPropagation();
+              dismissSearchMiss(query);
+              row.remove();
+            });
+            frag.appendChild(row);
+          });
+        }
+
+        // Last.fm similar artists — async, populates after render
+        const lfmContainer = document.createElement('div');
+        frag.appendChild(lfmContainer);
+
+        // Last.fm API key setup bar
+        const lfmKey = localStorage.getItem('jb-lfm-key') || '';
+        const keyBar = document.createElement('div');
+        keyBar.className = 'cr-lfm-key-bar';
+        keyBar.innerHTML = `<span style="color:var(--text3);font-size:11px;white-space:nowrap">Last.fm key:</span>
+          <input class="cr-lfm-key-input" type="text" value="${esc(lfmKey)}" placeholder="optional — enables Similar Artists suggestions" spellcheck="false" autocomplete="off">`;
+        const keyInput = keyBar.querySelector('.cr-lfm-key-input');
+        keyInput.addEventListener('change', () => {
+          const val = keyInput.value.trim();
+          if (val) localStorage.setItem('jb-lfm-key', val);
+          else localStorage.removeItem('jb-lfm-key');
+          renderLfmSection(lfmContainer, val);
+        });
+        frag.appendChild(keyBar);
+
+        if (lfmKey) renderLfmSection(lfmContainer, lfmKey);
+      }
+
       el.innerHTML = '';
       el.appendChild(frag);
     }
 
-    document.getElementById('catalog-search-trigger').addEventListener('click', () => { openCatalog(); closeSidebar(); });
+    async function renderLfmSection(container, apiKey) {
+      container.innerHTML = '';
+      if (!apiKey) return;
+
+      // Top 3 played artists in library
+      const libIds = new Set(Object.keys(userLib));
+      const artistPlays = {};
+      for (const id of libIds) {
+        const m = getMeta(id);
+        if (!m.playCount) continue;
+        const s = songs.find(x => String(x.id) === String(id));
+        if (s?.artist) artistPlays[s.artist] = (artistPlays[s.artist] || 0) + m.playCount;
+      }
+      const topArtists = Object.entries(artistPlays)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([artist]) => artist);
+      if (!topArtists.length) return;
+
+      container.innerHTML = '<div class="cr-section-label">Similar Artists <span style="opacity:.5;font-weight:400;text-transform:none;font-size:10px">— loading…</span></div>';
+
+      const similarNames = new Set();
+      try {
+        await Promise.all(topArtists.map(async artist => {
+          const url = `https://ws.audioscrobbler.com/2.0/?method=artist.getSimilar&artist=${encodeURIComponent(artist)}&api_key=${encodeURIComponent(apiKey)}&limit=10&format=json`;
+          const resp = await fetch(url);
+          if (!resp.ok) return;
+          const data = await resp.json();
+          (data.similarartists?.artist || []).forEach(a => similarNames.add(a.name));
+        }));
+      } catch {
+        container.innerHTML = '<div class="cr-section-label" style="color:var(--red)">Last.fm — check API key</div>';
+        return;
+      }
+      if (!similarNames.size) { container.innerHTML = ''; return; }
+
+      // Cross-reference names against catalog
+      const catalogByArtistLower = new Map();
+      songs.forEach(s => {
+        const k = (s.artist || '').toLowerCase();
+        if (k && !catalogByArtistLower.has(k)) catalogByArtistLower.set(k, s);
+      });
+      const libArtistNames = new Set(
+        songs.filter(s => inLib(s.id)).map(s => (s.artist || '').toLowerCase())
+      );
+
+      const inCatalog = [], notInCatalog = [];
+      for (const name of similarNames) {
+        const lname = name.toLowerCase();
+        if (libArtistNames.has(lname)) continue; // already fully in lib
+        const sample = catalogByArtistLower.get(lname);
+        if (sample) inCatalog.push(sample);
+        else notInCatalog.push(name);
+      }
+
+      container.innerHTML = '';
+      const frag2 = document.createDocumentFragment();
+
+      if (inCatalog.length) {
+        const lbl = document.createElement('div');
+        lbl.className = 'cr-section-label';
+        lbl.textContent = 'Similar Artists';
+        frag2.appendChild(lbl);
+        inCatalog.slice(0, 10).forEach(s => {
+          const allSongIds = songs.filter(x => (x.artist || '').toLowerCase() === (s.artist || '').toLowerCase()).map(x => x.id);
+          const allInLib = allSongIds.length > 0 && allSongIds.every(id => inLib(id));
+          const row = document.createElement('div');
+          row.className = 'cr-row';
+          row.innerHTML = `
+            <div class="cr-info">
+              <div class="cr-title">${esc(s.artist)}</div>
+              <div class="cr-sub">${allSongIds.length} song${allSongIds.length !== 1 ? 's' : ''} in catalog</div>
+            </div>
+            <button class="cr-add-btn ${allInLib ? 'in-lib' : ''}" title="${allInLib ? 'In Library' : 'Add to Library'}">
+              ${allInLib ? CHECK_SVG : '+'}
+            </button>`;
+          row.querySelector('.cr-info').addEventListener('click', () => { closeCatalog(); goToArtist(s.artist); });
+          const addBtn = row.querySelector('.cr-add-btn');
+          addBtn.addEventListener('click', async e => {
+            e.stopPropagation();
+            if (allInLib) {
+              for (const id of allSongIds) delete userLib[String(id)];
+              await pushUserLib(); renderList(); renderSB(); updCounts();
+              addBtn.classList.remove('in-lib'); addBtn.innerHTML = '+'; addBtn.title = 'Add to Library';
+            } else {
+              for (const id of allSongIds) {
+                const song = songs.find(x => String(x.id) === String(id));
+                if (song) userLib[String(id)] = { title: song.title, artist: song.artist, album: song.album, added: Date.now() };
+              }
+              await pushUserLib(); renderList(); renderSB(); updCounts();
+              addBtn.classList.add('in-lib'); addBtn.innerHTML = CHECK_SVG; addBtn.title = 'In Library';
+            }
+          });
+          frag2.appendChild(row);
+        });
+      }
+
+      if (notInCatalog.length) {
+        const lbl2 = document.createElement('div');
+        lbl2.className = 'cr-section-label';
+        lbl2.textContent = 'Consider Adding';
+        frag2.appendChild(lbl2);
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:12px;color:var(--text3);padding:6px 14px 4px';
+        hint.textContent = `Based on your listening — not yet on your server:`;
+        frag2.appendChild(hint);
+        notInCatalog.slice(0, 15).forEach(name => {
+          const row = document.createElement('div');
+          row.className = 'cr-row cr-request-row';
+          row.innerHTML = `<div class="cr-info"><div class="cr-title">${esc(name)}</div><div class="cr-sub">not in catalog</div></div>`;
+          frag2.appendChild(row);
+        });
+      }
+
+      if (frag2.childNodes.length) container.appendChild(frag2);
+    }
+
+    document.getElementById('catalog-search-trigger').addEventListener('click', () => { openCatalog(sq); closeSidebar(); });
     document.getElementById('catalog-cancel').addEventListener('click', closeCatalog);
+    document.getElementById('catalog-back-btn').addEventListener('click', () => {
+      catalogArtistView = null;
+      document.getElementById('catalog-artist-bar').style.display = 'none';
+      document.getElementById('catalog-search-bar').style.display = '';
+      renderCatalogResults(document.getElementById('catalog-input').value || '');
+    });
     document.getElementById('catalog-input').addEventListener('input', e => {
       renderCatalogResults(e.target.value);
+    });
+    document.getElementById('catalog-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        if (q && !songs.some(s =>
+          (s.title || '').toLowerCase().includes(q.toLowerCase()) ||
+          (s.artist || '').toLowerCase().includes(q.toLowerCase()) ||
+          (s.album || '').toLowerCase().includes(q.toLowerCase())
+        )) {
+          recordSearchMiss(q);
+        }
+      }
     });
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -3186,8 +4210,13 @@
       const cs = curSong(); if (!cs) return;
       // Navigate back to the view where playback was initiated
       const target = playbackView || 'all';
-      if (view !== target) {
-        view = target;
+      view = target;
+      if (window.innerWidth <= 700) {
+        // Mobile: restore full drilldown state so the song row is actually rendered
+        mobileAlbumDrilldown = playbackAlbumDrilldown;
+        mobileArtistDrilldown = playbackArtistDrilldown;
+        mobileNavMode = false;
+      } else {
         document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === target));
       }
       selId = cs.id;
@@ -3223,35 +4252,8 @@
           curUrl = URL.createObjectURL(cached.blob); src = curUrl;
           setBadge('', '● CACHED', song);
         } else if (online && cfg.url) {
-          // ── ALBUM STREAM: merge remaining tracks server-side for gapless iOS playback ──
-          // Only applies when gapless mode is enabled and tracks are not shuffled.
-          let usedAlbumStream = false;
-          if (gaplessMode && !shuf && rep !== 2) {
-            try {
-              // Collect remaining tracks from the current album (same album, in order from qi)
-              const curQi = newQi < 0 ? 0 : newQi;
-              const remaining = queue.slice(curQi)
-                .map(sid => songs.find(s => s.id === sid))
-                .filter(s => s && s.album === song.album && (s.album_artist || s.artist) === (song.album_artist || song.artist));
-              if (remaining.length > 1) {
-                const albumPaths = remaining.map(s => s.path);
-                const totalSec = remaining.reduce((s, sg) => s + (sg.duration || 0), 0);
-                const albumSrc = await albumStreamUrl(albumPaths, totalSec);
-                if (albumSrc) {
-                  src = albumSrc;
-                  _activeAlbumStreamSongIds = remaining.map(s => s.id);
-                  _albumStreamPaths  = albumPaths;
-                  setBadge('stream', '⋯ ALBUM', song);
-                  usedAlbumStream = true;
-                }
-              }
-            } catch { /* fall through to normal stream */ }
-          }
-          if (!usedAlbumStream) { _activeAlbumStreamSongIds = null; _albumStreamPaths = null; }
-          if (!usedAlbumStream) {
-            try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING', song); }
-            catch { toast('Stream failed'); return; }
-          }
+          try { src = await streamUrl(song); setBadge('stream', '⋯ STREAMING', song); }
+          catch { toast('Stream failed'); return; }
         } else { toast('Not cached & offline'); return; }
 
         aud.volume = rgVolume(song);
@@ -3398,7 +4400,10 @@ function setMS(song) {
   navigator.mediaSession.setActionHandler('pause', () => { aud.pause(); });
   navigator.mediaSession.setActionHandler('previoustrack', () => playPrev(true));
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext(true));
-  navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) aud.currentTime = d.seekTime; });
+  navigator.mediaSession.setActionHandler('seekto', d => {
+    if (d.seekTime == null) return;
+    aud.currentTime = d.seekTime;
+  });
 }
 
     // curSong uses playingId (stable string) not qi (index that changes on queue rebuild)
@@ -3415,6 +4420,8 @@ function setMS(song) {
     }
     function freezeQueue(startId) {
       playbackView = view;
+      playbackAlbumDrilldown = mobileAlbumDrilldown ? JSON.parse(JSON.stringify(mobileAlbumDrilldown)) : null;
+      playbackArtistDrilldown = mobileArtistDrilldown ? JSON.parse(JSON.stringify(mobileArtistDrilldown)) : null;
       const s = getViewSongs();
       const natural = s.map(x => x.id);
       if (shuf) {
@@ -3460,32 +4467,11 @@ function setMS(song) {
 
     let _userPaused = false;
 
-    let _activeAlbumStreamSongIds = null; // track which songs are covered by current album stream
-    let _albumStreamPaths  = null;        // track paths for stream state tracking
-
     function _onEnded() {
       if (rep === 2) { aud.currentTime = 0; aud.play(); return; }
-      if (_activeAlbumStreamSongIds) {
-        // Album stream ended — the entire merged album is done. Advance past all covered songs.
-        const lastId = _activeAlbumStreamSongIds[_activeAlbumStreamSongIds.length - 1];
-        const lastIdx = queue.indexOf(lastId);
-        _activeAlbumStreamSongIds = null; _albumStreamPaths = null;
-        if (lastIdx >= 0 && lastIdx + 1 < queue.length) {
-          qi = lastIdx;
-          playingId = queue[qi + 1];
-          qi++;
-          playSong(queue[qi]);
-        }
-        // else: nothing after album, done
-      } else {
-        playNext();
-      }
+      playNext();
     }
-    function _onAudError() {
-      if (_activeAlbumStreamSongIds) {
-        console.log('[GaplessStream] audio error during album stream, code:', aud.error?.code);
-      }
-    }
+    function _onAudError() { }
     function _onPlay() {
       playing = true; _userPaused = false; updPBtn(); renderList();
     }
@@ -3496,6 +4482,7 @@ function setMS(song) {
       const curTime = aud.currentTime;
       const dur     = aud.duration;
       const isFinite_ = dur && isFinite(dur) && dur > 0;
+
       if (isFinite_) {
         const p = (curTime / dur) * 100;
         document.getElementById('pf').style.width = p + '%';
@@ -3601,9 +4588,14 @@ function setMS(song) {
       document.getElementById('lib-ct').textContent = nonMissing.length;
       document.getElementById('upnext-ct').textContent = queue.length;
       if (nonMissing.length) {
-        document.getElementById('albums-ct').textContent       = nonMissing.filter(s => s.section === 'albums').length;
+        document.getElementById('albums-ct').textContent = new Set(
+          nonMissing.filter(s => s.section === 'albums').map(s => (s.album || '').toLowerCase().trim() + '|||' + _groupArtist(s))
+        ).size;
         document.getElementById('singles-ct').textContent      = nonMissing.filter(s => s.section === 'singles').length;
-        document.getElementById('compilations-ct').textContent = nonMissing.filter(s => s.section === 'compilations').length;
+        document.getElementById('compilations-ct').textContent = new Set(
+          nonMissing.filter(s => s.section === 'compilations').map(s => (s.album || '').toLowerCase().trim())
+        ).size;
+        document.getElementById('artists-ct').textContent = new Set(nonMissing.map(s => _groupArtist(s))).size;
       }
     }
 
@@ -3755,13 +4747,20 @@ function setMS(song) {
       const now = Date.now();
       const lib = libSongs(); // user's library (catalog filtered to userLib membership)
 
+      // When "search all songs" is active, bypass view filtering and search across all library songs
+      if (searchAllSongs && sq) {
+        const q = sq.toLowerCase();
+        s = lib.filter(x => (x.title||'').toLowerCase().includes(q)||(x.artist||'').toLowerCase().includes(q)||(x.album||'').toLowerCase().includes(q));
+        return applySort(s, col, dir);
+      }
+
       if (view === 'upnext') {
         // Show current queue in order from current position
         const allQ = queue.map(id => songs.find(x => x.id === id)).filter(Boolean);
         return allQ; // no search filter, no re-sort
       }
       if (view === 'cached') s = lib.filter(x => cachedIds.has(x.id));
-      else if (view === 'all') s = [...lib];
+      else if (view === 'all' || view === 'artists') s = [...lib];
       else if (view === 'albums') {
         // Driven by the 'section' field set from the filesystem path in api.php
         s = lib.filter(x => x.section === 'albums');
@@ -3975,9 +4974,30 @@ function setMS(song) {
         const hit = rowOf(e.target); if (!hit) return;
         const { row, id } = hit;
 
+        if (window.innerWidth > 700) {
+          const viewSongs = getViewSongs();
+          const clickedIdx = viewSongs.findIndex(s => s.id === id);
+
+          if (e.shiftKey && lastClickIdx >= 0 && clickedIdx >= 0) {
+            // Shift+click: range select from anchor to here
+            const lo = Math.min(lastClickIdx, clickedIdx);
+            const hi = Math.max(lastClickIdx, clickedIdx);
+            for (let i = lo; i <= hi; i++) selectedIds.add(viewSongs[i].id);
+            updateSelectionUI(); return;
+          }
+          if (e.metaKey || e.ctrlKey) {
+            // Cmd/Ctrl+click: toggle individual
+            if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+            lastClickIdx = clickedIdx; updateSelectionUI(); return;
+          }
+          // Plain click: collapse to single selection, keep acting as anchor
+          selectedIds.clear(); lastClickIdx = clickedIdx;
+        }
+
         const prev = list.querySelector('.sr.sel');
         if (prev) prev.classList.remove('sel');
         selId = id; row.classList.add('sel');
+        if (window.innerWidth > 700) updateSelectionUI();
       });
 
       // Dblclick delegation
@@ -4017,7 +5037,65 @@ function setMS(song) {
     })();
 
     function renderList() {
-      const s = getViewSongs();
+      const mobile = window.innerWidth <= 700;
+
+      // ── Update menu-btn appearance (mobile back-to-library button) ─────────────
+      const menuBtn = document.getElementById('menu-btn');
+      if (mobile && menuBtn) {
+        const toolbar = document.getElementById('toolbar');
+        if (mobileNavMode) {
+          menuBtn.style.display = 'none';
+          if (toolbar) toolbar.classList.add('mob-home');
+        } else {
+          menuBtn.style.display = 'flex';
+          menuBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg><span>Library</span>`;
+          if (toolbar) toolbar.classList.remove('mob-home');
+        }
+      }
+
+      // ── Mobile-specific views ──────────────────────────────────────────────────
+      // Library home screen (nav list replaces song list)
+      if (mobile && mobileNavMode) {
+        renderMobLibraryNav(); return;
+      }
+      if (mobile && view === 'artists' && !mobileArtistDrilldown) {
+        renderMobArtistList(); return;
+      }
+      if (mobile && (view === 'albums' || view === 'compilations') && !mobileAlbumDrilldown) {
+        renderMobAlbumGrid(); return;
+      }
+      if (mobile && view === 'cached' && !mobileAlbumDrilldown) {
+        renderMobCacheGrid(); return;
+      }
+
+      // Drilldown songs (album or artist)
+      const mobDrillSongs = mobile && mobileAlbumDrilldown ? getMobDrillSongs()
+        : mobile && mobileArtistDrilldown && view === 'artists' ? getMobArtistDrillSongs()
+        : null;
+
+      // Update mobile back bar and toolbar title when in drilldown
+      const backBar = document.getElementById('mob-back-bar');
+      const backLabel = document.getElementById('mob-back-label');
+      if (backBar) {
+        if (mobile && mobileAlbumDrilldown) {
+          backBar.classList.add('show');
+          const parentName = view === 'compilations' ? 'Compilations' : 'Albums';
+          if (backLabel) backLabel.textContent = parentName;
+          const brand = document.getElementById('tb-brand');
+          if (brand) brand.textContent = mobileAlbumDrilldown.label || parentName;
+        } else if (mobile && mobileArtistDrilldown && view === 'artists') {
+          backBar.classList.add('show');
+          if (backLabel) backLabel.textContent = 'Artists';
+          const brand = document.getElementById('tb-brand');
+          if (brand) brand.textContent = mobileArtistDrilldown.displayName;
+        } else {
+          backBar.classList.remove('show');
+          const brand = document.getElementById('tb-brand');
+          if (brand) brand.textContent = viewDisplayName(view);
+        }
+      }
+
+      const s = mobDrillSongs || getViewSongs();
       const list = document.getElementById('sl');
       const empty = document.getElementById('empty');
       const cs = curSong();
@@ -4026,6 +5104,9 @@ function setMS(song) {
       const cols = getViewCols(view);
       const tpl  = cols.map(c => c.width).join(' ');
 
+      // Hide col headers for artists view (handled by renderMobArtistList) and album grid
+      const colHdrs = document.getElementById('col-hdrs');
+      if (colHdrs) colHdrs.style.display = '';
       renderColHdrs(view);
 
       if (!s.length) {
@@ -4066,7 +5147,7 @@ function setMS(song) {
       }
       empty.classList.remove('show');
       const frag = document.createDocumentFragment();
-      const mobile = window.innerWidth <= 700;
+      //const mobile = window.innerWidth <= 700;
 
       s.forEach((song, i) => {
         const isNow    = cs && song.id === cs.id;
@@ -4435,17 +5516,452 @@ function setMS(song) {
         }
       });
       list.innerHTML = ''; list.appendChild(frag);
-      // Append "Browse Catalogue" footer when search is active
+      // Append search footer when search is active
       if (sq && view !== 'upnext') {
         const footer = document.createElement('div');
-        footer.style.cssText = 'text-align:center;padding:20px 16px;color:var(--text3);font-size:12px';
-        footer.innerHTML = `Not finding what you want? <button onclick="openCatalog()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:0;text-decoration:underline">Browse Catalogue</button>`;
+        footer.style.cssText = 'text-align:center;padding:16px 16px 20px;color:var(--text3);font-size:12px;display:flex;flex-direction:column;gap:8px;align-items:center';
+        const allSongsBtn = document.createElement('button');
+        allSongsBtn.style.cssText = 'background:none;border:1px solid var(--accent);color:var(--accent);font-size:12px;cursor:pointer;padding:4px 10px;border-radius:12px';
+        allSongsBtn.textContent = searchAllSongs ? 'Searching all songs — show current view only' : 'Search all songs in library';
+        allSongsBtn.addEventListener('click', () => { searchAllSongs = !searchAllSongs; renderList(); });
+        const browseBtn = document.createElement('button');
+        browseBtn.style.cssText = 'background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;padding:0;text-decoration:underline';
+        browseBtn.textContent = 'Browse Catalogue';
+        browseBtn.addEventListener('click', () => openCatalog(sq));
+        footer.appendChild(allSongsBtn);
+        footer.appendChild(browseBtn);
         list.appendChild(footer);
       }
       updateStatusBar(s);
       updateUpNextBar();
+      if (window.innerWidth > 700) updateSelectionUI(); // re-apply .msel after DOM rebuild
     }
     function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+    // ── MOBILE ALBUM GRID helpers ─────────────────────────────────────────────────
+
+    // Build album groups from the current view's songs
+    function getMobAlbumGroups() {
+      const viewSongs = getViewSongs();
+      const isCompilations = view === 'compilations';
+      const groups = {}; // key -> {album, artistKey, displayArtist, songs[], artUrl}
+      for (const song of viewSongs) {
+        const artistKey = isCompilations ? '__various__' : _groupArtist(song);
+        const albumKey = (song.album || '').toLowerCase().trim() + '|||' + artistKey;
+        if (!groups[albumKey]) {
+          groups[albumKey] = {
+            album: song.album || '',
+            artistKey,
+            displayArtist: isCompilations ? 'Various Artists' : (song.album_artist || song.artist || ''),
+            songs: [],
+            artUrl: null
+          };
+        }
+        groups[albumKey].songs.push(song);
+        if (!groups[albumKey].artUrl && getMeta(song.id).albumArtUrl) {
+          groups[albumKey].artUrl = getMeta(song.id).albumArtUrl;
+        }
+      }
+      return groups;
+    }
+
+    // Get songs for the current mobile artist drilldown
+    function getMobArtistDrillSongs() {
+      const d = mobileArtistDrilldown;
+      if (!d) return null;
+      const lib = libSongs().filter(s => !s._missing);
+      const filtered = lib.filter(s => _groupArtist(s) === d.key);
+      filtered.sort((a, b) => {
+        const al = (a.album || '').toLowerCase(), bl = (b.album || '').toLowerCase();
+        if (al !== bl) return al < bl ? -1 : 1;
+        if ((a.disc || 1) !== (b.disc || 1)) return (a.disc || 1) - (b.disc || 1);
+        return (a.track || 0) - (b.track || 0);
+      });
+      return filtered;
+    }
+
+    // Get songs for the current mobile album drilldown
+    function getMobDrillSongs() {
+      const d = mobileAlbumDrilldown;
+      if (!d) return null;
+      const viewSongs = getViewSongs();
+      if (d.isIncomplete) {
+        // Show all songs whose album key is "incomplete"
+        const groups = getMobAlbumGroups();
+        const incompleteKeys = Object.keys(groups).filter(k => groups[k].songs.length <= 3);
+        const incompleteIds = new Set();
+        for (const k of incompleteKeys) groups[k].songs.forEach(s => incompleteIds.add(s.id));
+        return viewSongs.filter(s => incompleteIds.has(s.id));
+      }
+      const isCompilations = view === 'compilations';
+      return viewSongs.filter(s => {
+        const albumMatch = (s.album || '').toLowerCase().trim() === d.album;
+        if (isCompilations) return albumMatch;
+        return albumMatch && _groupArtist(s) === d.artistKey;
+      });
+    }
+
+    // Render the album grid for albums/compilations on mobile
+    function renderMobAlbumGrid() {
+      const list = document.getElementById('sl');
+      const colHdrs = document.getElementById('col-hdrs');
+      const backBar = document.getElementById('mob-back-bar');
+      if (colHdrs) colHdrs.style.display = 'none';
+      if (backBar) backBar.classList.remove('show');
+
+      const groups = getMobAlbumGroups();
+      const complete = [];
+      const incomplete = [];
+      for (const key of Object.keys(groups)) {
+        const g = groups[key];
+        if (g.songs.length > 3) complete.push(g);
+        else incomplete.push(g);
+      }
+      // Sort complete albums: by displayArtist then album name
+      complete.sort((a, b) => {
+        const ar = a.artistKey.toLowerCase(), br = b.artistKey.toLowerCase();
+        if (ar !== br) return ar < br ? -1 : 1;
+        return (a.album || '').toLowerCase() < (b.album || '').toLowerCase() ? -1 : 1;
+      });
+
+      const frag = document.createDocumentFragment();
+      const grid = document.createElement('div');
+      grid.id = 'mob-album-grid';
+
+      function makeTile(album, artistKey, displayArtist, artUrl, label, isIncomplete, tileSongs) {
+        const tile = document.createElement('div');
+        tile.className = 'mob-album-tile';
+        // Square wrapper via padding-bottom trick (reliable cross-browser)
+        const artWrap = document.createElement('div');
+        artWrap.className = 'mob-album-art-wrap';
+        const artInner = document.createElement('div');
+        artInner.className = 'mob-album-art-inner';
+        const placeholderSvg = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+        if (artUrl) {
+          const img = document.createElement('img');
+          img.src = artUrl;
+          img.alt = '';
+          img.addEventListener('error', function() { this.parentNode.innerHTML = placeholderSvg; });
+          artInner.appendChild(img);
+        } else {
+          artInner.innerHTML = placeholderSvg;
+        }
+        artWrap.appendChild(artInner);
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'mob-album-name';
+        nameDiv.textContent = label;
+        tile.appendChild(artWrap);
+        tile.appendChild(nameDiv);
+        if (!isIncomplete) {
+          const artistDiv = document.createElement('div');
+          artistDiv.className = 'mob-album-artist';
+          artistDiv.textContent = displayArtist;
+          tile.appendChild(artistDiv);
+        }
+        let tilePress;
+        tile.addEventListener('click', () => {
+          mobileAlbumDrilldown = isIncomplete
+            ? { isIncomplete: true, label: 'Incomplete' }
+            : { album: (album || '').toLowerCase().trim(), artistKey, label: album || 'Unknown' };
+          pushMobileHistory();
+          renderList();
+        });
+        if (tileSongs && tileSongs.length) {
+          tile.addEventListener('touchstart', e => {
+            const t = e.touches[0];
+            tilePress = setTimeout(() => {
+              e.preventDefault();
+              showGroupCtx(t.clientX, t.clientY, tileSongs, label);
+            }, 600);
+          }, { passive: true });
+          tile.addEventListener('touchend', () => clearTimeout(tilePress), { passive: true });
+          tile.addEventListener('touchmove', () => clearTimeout(tilePress), { passive: true });
+        }
+        return tile;
+      }
+
+      for (const g of complete) {
+        grid.appendChild(makeTile(g.album, g.artistKey, g.displayArtist, g.artUrl, g.album || 'Unknown', false, g.songs));
+      }
+      if (incomplete.length > 0) {
+        // Pick first art from incomplete group, or none
+        const incArt = incomplete.find(g => g.artUrl)?.artUrl || null;
+        const incSongs = incomplete.flatMap(g => g.songs);
+        grid.appendChild(makeTile(null, null, null, incArt, 'Incomplete', true, incSongs));
+      }
+
+      frag.appendChild(grid);
+      list.innerHTML = '';
+      list.appendChild(frag);
+      updateStatusBar([]);
+    }
+
+    // Render cached songs as an album artwork grid on mobile
+    function renderMobCacheGrid() {
+      const list = document.getElementById('sl');
+      const colHdrs = document.getElementById('col-hdrs');
+      const backBar = document.getElementById('mob-back-bar');
+      if (colHdrs) colHdrs.style.display = 'none';
+      if (backBar) backBar.classList.remove('show');
+
+      const lib = libSongs();
+      const cachedSongs = lib.filter(x => cachedIds.has(x.id));
+
+      // Group by album + artist (same logic as getMobAlbumGroups but over cached songs)
+      const groups = {};
+      for (const song of cachedSongs) {
+        const artistKey = _groupArtist(song);
+        const albumKey = (song.album || '').toLowerCase().trim() + '|||' + artistKey;
+        if (!groups[albumKey]) {
+          groups[albumKey] = {
+            album: song.album || '',
+            artistKey,
+            displayArtist: song.album_artist || song.artist || '',
+            songs: [],
+            artUrl: null
+          };
+        }
+        groups[albumKey].songs.push(song);
+        if (!groups[albumKey].artUrl && getMeta(song.id).albumArtUrl) {
+          groups[albumKey].artUrl = getMeta(song.id).albumArtUrl;
+        }
+      }
+
+      const albumList = Object.values(groups).sort((a, b) => {
+        const ar = a.artistKey.toLowerCase(), br = b.artistKey.toLowerCase();
+        if (ar !== br) return ar < br ? -1 : 1;
+        return (a.album || '').toLowerCase() < (b.album || '').toLowerCase() ? -1 : 1;
+      });
+
+      const frag = document.createDocumentFragment();
+      if (!albumList.length) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'text-align:center;padding:60px 20px;color:var(--text3);font-size:14px';
+        empty.textContent = 'No cached songs';
+        frag.appendChild(empty);
+      } else {
+        const grid = document.createElement('div');
+        grid.id = 'mob-album-grid';
+        const placeholderSvg = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+        for (const g of albumList) {
+          const tile = document.createElement('div');
+          tile.className = 'mob-album-tile';
+          const artWrap = document.createElement('div');
+          artWrap.className = 'mob-album-art-wrap';
+          const artInner = document.createElement('div');
+          artInner.className = 'mob-album-art-inner';
+          if (g.artUrl) {
+            const img = document.createElement('img');
+            img.src = g.artUrl;
+            img.alt = '';
+            img.addEventListener('error', function() { this.parentNode.innerHTML = placeholderSvg; });
+            artInner.appendChild(img);
+          } else {
+            artInner.innerHTML = placeholderSvg;
+          }
+          artWrap.appendChild(artInner);
+          const nameDiv = document.createElement('div');
+          nameDiv.className = 'mob-album-name';
+          nameDiv.textContent = g.album || 'Unknown';
+          const artistDiv = document.createElement('div');
+          artistDiv.className = 'mob-album-artist';
+          artistDiv.textContent = g.displayArtist;
+          tile.appendChild(artWrap);
+          tile.appendChild(nameDiv);
+          tile.appendChild(artistDiv);
+          tile.addEventListener('click', () => {
+            mobileAlbumDrilldown = { album: g.album.toLowerCase().trim(), artistKey: g.artistKey, label: g.album || 'Unknown' };
+            pushMobileHistory();
+            renderList();
+          });
+          let cachePress;
+          tile.addEventListener('touchstart', e => {
+            const t = e.touches[0];
+            cachePress = setTimeout(() => {
+              showGroupCtx(t.clientX, t.clientY, g.songs, g.album || 'Unknown');
+            }, 600);
+          }, { passive: true });
+          tile.addEventListener('touchend', () => clearTimeout(cachePress), { passive: true });
+          tile.addEventListener('touchmove', () => clearTimeout(cachePress), { passive: true });
+          grid.appendChild(tile);
+        }
+        frag.appendChild(grid);
+      }
+      list.innerHTML = '';
+      list.appendChild(frag);
+      updateStatusBar([]);
+    }
+
+    // Render the library home screen (vertical nav list) on mobile
+    function renderMobLibraryNav() {
+      const list = document.getElementById('sl');
+      const colHdrs = document.getElementById('col-hdrs');
+      const backBar = document.getElementById('mob-back-bar');
+      if (colHdrs) colHdrs.style.display = 'none';
+      if (backBar) backBar.classList.remove('show');
+
+      // Update toolbar title
+      const brand = document.getElementById('tb-brand');
+      if (brand) brand.textContent = 'Library';
+
+      const lib = libSongs().filter(s => !s._missing);
+      const now2 = Date.now();
+      const songCount = lib.length;
+      const artistCount = new Set(lib.map(s => _groupArtist(s))).size;
+      const albumCount = new Set(
+        lib.filter(s => s.section === 'albums').map(s => (s.album || '').toLowerCase().trim() + '|||' + _groupArtist(s))
+      ).size;
+      const singlesCount = lib.filter(s => s.section === 'singles').length;
+      const compilationCount = new Set(
+        lib.filter(s => s.section === 'compilations').map(s => (s.album || '').toLowerCase().trim())
+      ).size;
+      const cacheCount = cachedIds.size;
+      const upnextCount = queue.length;
+      const starCount = lib.filter(s => isStarred(s.id)).length;
+      const recentCutoff = now2 - (30 * 24 * 60 * 60 * 1000);
+      const recentCount = lib.filter(s => (userLib[String(s.id)]?.added || getMeta(s.id).dateAdded || 0) > recentCutoff).length;
+      const recentPlayedCount = lib.filter(s => lastPlayed(s.id) > 0).length;
+      const mostPlayedCount = lib.filter(s => playCount(s.id) > 0).length;
+      const mostSkippedCount = lib.filter(s => skipCount(s.id) > 0).length;
+      const neverCount = lib.filter(s => !playCount(s.id)).length;
+
+      const frag = document.createDocumentFragment();
+
+      function addSection(label) {
+        const el = document.createElement('div');
+        el.className = 'mob-nav-section';
+        el.textContent = label;
+        frag.appendChild(el);
+      }
+
+      function addItem(id, label, badge, iconPath) {
+        const el = document.createElement('div');
+        el.className = 'mob-nav-item';
+        el.innerHTML = `
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${iconPath}</svg>
+          <span class="mob-nav-label">${esc(label)}</span>
+          <span class="mob-nav-badge">${badge}</span>
+          <span class="mob-nav-chevron">›</span>`;
+        el.addEventListener('click', () => {
+          mobileNavMode = false;
+          mobileAlbumDrilldown = null;
+          mobileArtistDrilldown = null;
+          switchView(id);
+          pushMobileHistory();
+        });
+        frag.appendChild(el);
+      }
+
+      addSection('Library');
+      addItem('all',          'Songs',        songCount,        '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>');
+      addItem('artists',      'Artists',      artistCount,      '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>');
+      addItem('albums',       'Albums',       albumCount,       '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>');
+      addItem('singles',      'Singles',      singlesCount,     '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>');
+      addItem('compilations', 'Compilations', compilationCount, '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>');
+      addItem('cached',       'Offline Cache',cacheCount,       '<polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/>');
+      addItem('upnext',       'Up Next',      upnextCount,      '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>');
+
+      addSection('Smart Views');
+      addItem('recently-added',  'Recently Added',  recentCount,       '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>');
+      addItem('recently-played', 'Recently Played', recentPlayedCount, '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>');
+      addItem('most-played',     'Most Played',     mostPlayedCount,   '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>');
+      addItem('most-skipped',    'Most Skipped',    mostSkippedCount,  '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>');
+      addItem('never-played',    'Never Played',    neverCount,        '<circle cx="12" cy="12" r="10"/><path d="M9 9l6 6"/><path d="M15 9l-6 6"/>');
+      if (starCount > 0 || view === 'starred') {
+        addItem('starred', 'Loved', starCount, '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>');
+      }
+
+      if (pls.length) {
+        addSection('Playlists');
+        pls.forEach(pl => {
+          const el = document.createElement('div');
+          el.className = 'mob-nav-item';
+          el.innerHTML = `
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+            <span class="mob-nav-label">${esc(pl.name)}</span>
+            <span class="mob-nav-badge">${(pl.sids || []).length}</span>
+            <span class="mob-nav-chevron">›</span>`;
+          el.addEventListener('click', () => {
+            mobileNavMode = false;
+            mobileAlbumDrilldown = null;
+            mobileArtistDrilldown = null;
+            switchView(String(pl.id));
+            pushMobileHistory();
+          });
+          // Long-press to rename
+          let plPressTimer;
+          el.addEventListener('touchstart', () => { plPressTimer = setTimeout(() => { showPlCtx(60, el.getBoundingClientRect().bottom, pl.id); }, 600); }, { passive: true });
+          el.addEventListener('touchend', () => clearTimeout(plPressTimer), { passive: true });
+          el.addEventListener('touchmove', () => clearTimeout(plPressTimer), { passive: true });
+          frag.appendChild(el);
+        });
+      }
+
+      list.innerHTML = '';
+      list.appendChild(frag);
+      updateStatusBar([]);
+      updateUpNextBar();
+    }
+
+    // Render artist list on mobile
+    function renderMobArtistList() {
+      const list = document.getElementById('sl');
+      const colHdrs = document.getElementById('col-hdrs');
+      const backBar = document.getElementById('mob-back-bar');
+      if (colHdrs) colHdrs.style.display = 'none';
+      if (backBar) backBar.classList.remove('show');
+
+      const lib = libSongs().filter(s => !s._missing);
+      // Group by canonical artist key
+      const artistMap = {};
+      for (const song of lib) {
+        const key = _groupArtist(song);
+        if (!artistMap[key]) {
+          artistMap[key] = { key, displayName: song.album_artist || song.artist || key, count: 0 };
+        }
+        artistMap[key].count++;
+      }
+      const artists = Object.values(artistMap);
+      // Apply search filter
+      const filteredArtists = sq
+        ? artists.filter(a => a.displayName.toLowerCase().includes(sq.toLowerCase()))
+        : artists;
+      filteredArtists.sort((a, b) => a.key < b.key ? -1 : 1);
+
+      const frag = document.createDocumentFragment();
+      for (const artist of filteredArtists) {
+        const row = document.createElement('div');
+        row.className = 'mob-artist-row';
+        row.innerHTML = `
+          <div class="mob-artist-name">${esc(artist.displayName)}</div>
+          <div class="mob-artist-count">${artist.count}</div>
+          <div class="mob-artist-chevron">›</div>`;
+        row.addEventListener('click', () => {
+          mobileArtistDrilldown = { displayName: artist.displayName, key: artist.key };
+          pushMobileHistory();
+          renderList();
+        });
+        let artistPress;
+        row.addEventListener('touchstart', e => {
+          const t = e.touches[0];
+          artistPress = setTimeout(() => {
+            const artistSongs = lib.filter(s => _groupArtist(s) === artist.key);
+            showGroupCtx(t.clientX, t.clientY, artistSongs, artist.displayName);
+          }, 600);
+        }, { passive: true });
+        row.addEventListener('touchend', () => clearTimeout(artistPress), { passive: true });
+        row.addEventListener('touchmove', () => clearTimeout(artistPress), { passive: true });
+        frag.appendChild(row);
+      }
+
+      list.innerHTML = '';
+      if (filteredArtists.length === 0) {
+        list.innerHTML = '<div style="text-align:center;padding:40px 24px;color:var(--text3)">No artists found</div>';
+      } else {
+        list.appendChild(frag);
+      }
+      updateStatusBar([]);
+    }
 
     function renderSB() {
       const libCount = libSongs().filter(s => !s._missing).length;
@@ -4453,12 +5969,18 @@ function setMS(song) {
       document.getElementById('cache-ct').textContent = cachedIds.size;
       document.getElementById('upnext-ct').textContent = queue.length;
       // Highlight fixed nav items
-      ['all','albums','singles','compilations','cached','upnext'].forEach(id => {
+      ['all','artists','albums','singles','compilations','cached','upnext'].forEach(id => {
         document.getElementById('nav-' + id)?.classList.toggle('active', view === id);
       });
-      // Keep compilations badge in sync
+      // Keep section badges in sync (show unique album/artist counts, not song counts)
       const allLib = libSongs().filter(s => !s._missing);
-      document.getElementById('compilations-ct').textContent = allLib.filter(s => s.section === 'compilations').length;
+      document.getElementById('albums-ct').textContent = new Set(
+        allLib.filter(s => s.section === 'albums').map(s => (s.album || '').toLowerCase().trim() + '|||' + _groupArtist(s))
+      ).size;
+      document.getElementById('compilations-ct').textContent = new Set(
+        allLib.filter(s => s.section === 'compilations').map(s => (s.album || '').toLowerCase().trim())
+      ).size;
+      document.getElementById('artists-ct').textContent = new Set(allLib.map(s => _groupArtist(s))).size;
       const nav = document.getElementById('pl-nav');
       nav.innerHTML = '';
       // ── Smart views ──────────────────────────────────────────────────────────────
@@ -4531,6 +6053,7 @@ function setMS(song) {
 
     const VIEW_NAMES = {
       'all':             'Songs',
+      'artists':         'Artists',
       'albums':          'Albums',
       'singles':         'Singles',
       'cached':          'Offline Cache',
@@ -4551,8 +6074,13 @@ function setMS(song) {
 
     function switchView(v) {
       view = v;
-      // Clear search on view change
+      mobileAlbumDrilldown = null;  // reset drilldowns when switching views
+      mobileArtistDrilldown = null;
+      if (window.innerWidth <= 700) mobileNavMode = false; // entering a view hides the nav home screen
+      // Clear search and selection on view change
       sq = '';
+      searchAllSongs = false;
+      selectedIds.clear(); lastClickIdx = -1;
       const searchEl = document.getElementById('search');
       if (searchEl) searchEl.value = '';
       const mobSearchEl = document.getElementById('mob-search-input');
@@ -4585,14 +6113,39 @@ function setMS(song) {
       document.getElementById('sidebar').classList.remove('open');
       document.getElementById('sidebar-overlay').classList.remove('show');
     }
-    document.getElementById('menu-btn').addEventListener('click', openSidebar);
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      // On mobile use browser history to go back (enables swipe-back to stay consistent)
+      if (window.innerWidth <= 700 && history.state && !history.state.mobileNavMode) {
+        history.back(); return;
+      }
+      mobileNavMode = true;
+      mobileAlbumDrilldown = null;
+      mobileArtistDrilldown = null;
+      renderList();
+      renderSB();
+    });
     document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
     document.getElementById('nav-all').addEventListener('click', () => { switchView('all'); closeSidebar(); });
+    document.getElementById('nav-artists').addEventListener('click', () => { switchView('artists'); closeSidebar(); });
     document.getElementById('nav-albums').addEventListener('click', () => { switchView('albums'); closeSidebar(); });
     document.getElementById('nav-singles').addEventListener('click', () => { switchView('singles'); closeSidebar(); });
     document.getElementById('nav-compilations').addEventListener('click', () => { switchView('compilations'); closeSidebar(); });
     document.getElementById('nav-cached').addEventListener('click', () => { switchView('cached'); closeSidebar(); });
     document.getElementById('nav-upnext').addEventListener('click', () => { switchView('upnext'); closeSidebar(); });
+
+    // ── MOBILE BACK BAR (album / artist drilldown) ────────────────────────────────
+    document.getElementById('mob-back-bar').addEventListener('click', () => {
+      if (window.innerWidth <= 700 && history.state &&
+          (history.state.mobileAlbumDrilldown || history.state.mobileArtistDrilldown)) {
+        history.back(); return;
+      }
+      mobileAlbumDrilldown = null;
+      mobileArtistDrilldown = null;
+      // Update toolbar brand back to view name
+      const brand = document.getElementById('tb-brand');
+      if (brand) brand.textContent = VIEW_NAMES[view] || view;
+      renderList();
+    });
 
     // ── NOW PLAYING PANEL (mobile) ────────────────────────────────────────────────
     function openNPPanel() { document.getElementById('nowplaying-panel').classList.add('open'); }
@@ -4607,6 +6160,7 @@ function setMS(song) {
     });
     document.getElementById('np-panel-bar').addEventListener('click', closeNPPanel);
     document.getElementById('np-panel-close').addEventListener('click', closeNPPanel);
+    document.getElementById('np-panel-art').addEventListener('click', closeNPPanel);
 
     let touchStartY = 0;
     document.getElementById('nowplaying-panel').addEventListener('touchstart', e => { touchStartY = e.touches[0].clientY; }, { passive: true });
@@ -4616,7 +6170,8 @@ function setMS(song) {
 
     document.getElementById('np-panel-prog').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
-      if (aud.duration) aud.currentTime = ((e.clientX - r.left) / r.width) * aud.duration;
+      const pct = (e.clientX - r.left) / r.width;
+      if (aud.duration) aud.currentTime = pct * aud.duration;
     });
     document.getElementById('np-panel-vt').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -4688,17 +6243,78 @@ function setMS(song) {
 
 
     // ── BULK SELECTION ────────────────────────────────────────────────────────────
+    let selectedIds  = new Set(); // song IDs currently selected (desktop multi-select)
+    let lastClickIdx = -1;        // index in current view of last clicked row (shift-anchor)
 
+    function getSelSongs() {
+      const lib = libSongs();
+      return [...selectedIds].map(id => lib.find(s => s.id === id)).filter(Boolean);
+    }
+    function clearSelection() {
+      selectedIds.clear(); lastClickIdx = -1; updateSelectionUI();
+    }
+    function updateSelectionUI() {
+      // Re-apply .msel on all currently-rendered rows
+      const sl = document.getElementById('sl');
+      if (sl) sl.querySelectorAll('.sr').forEach(r => r.classList.toggle('msel', selectedIds.has(r.dataset.id)));
+    }
+
+    // Action bar button handlers
+    document.getElementById('msel-play').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      freezeQueue(null); queue.length = 0; queue.push(...sel.map(s => s.id));
+      qi = 0; playSong(queue[0], true, true); clearSelection();
+    });
+    document.getElementById('msel-next').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      if (!queue.length) freezeQueue(null);
+      queue.splice(qi + 1, 0, ...sel.map(s => s.id));
+      updCounts(); toast(`${sel.length} songs playing next`); clearSelection();
+    });
+    document.getElementById('msel-addtoqueue').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      if (!queue.length) freezeQueue(null);
+      queue.push(...sel.map(s => s.id));
+      updCounts(); toast(`${sel.length} songs added to queue`); clearSelection();
+    });
+    document.getElementById('msel-cache').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      const allCached = sel.every(s => cachedIds.has(s.id));
+      if (allCached) { sel.forEach(s => uncache(s.id)); toast(`Removed ${sel.length} songs from cache`); }
+      else { const toCache = sel.filter(s => !cachedIds.has(s.id)); toCache.forEach(s => cacheSong(s.id)); toast(`Caching ${toCache.length} songs…`); }
+      clearSelection();
+    });
+    document.getElementById('msel-addpl').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      const rect = document.getElementById('msel-addpl').getBoundingClientRect();
+      showGroupCtx(rect.left, rect.top, sel, `${sel.length} songs`);
+    });
+    document.getElementById('msel-remove').addEventListener('click', () => {
+      const sel = getSelSongs(); if (!sel.length) return;
+      if (!confirm(`Remove ${sel.length} song${sel.length !== 1 ? 's' : ''} from your library?`)) return;
+      sel.forEach(s => removeFromLib(s.id)); clearSelection();
+    });
+    document.getElementById('msel-clear').addEventListener('click', clearSelection);
 
     // ── CONTEXT MENU ──────────────────────────────────────────────────────────────
     function showCtx(x, y, id) {
+      // Right-clicking inside a multi-selection → show group ctx for all selected songs
+      if (window.innerWidth > 700 && selectedIds.size > 1 && selectedIds.has(id)) {
+        showGroupCtx(x, y, getSelSongs(), `${selectedIds.size} songs`);
+        return;
+      }
+      // Right-clicking outside active selection: collapse to just this row
+      if (selectedIds.size > 0) { selectedIds.clear(); updateSelectionUI(); }
       ctxId = id;
       const menu = document.getElementById('ctx'), pi = document.getElementById('ctx-pls'), ps = document.getElementById('ctx-pls-sep');
       const isCached = cachedIds.has(id), starred = isStarred(id);
       const m = getMeta(id);
-      const song = songs.find(s => s.id === id);
+      const song = libSongs().find(s => s.id === id);
+      const isMissing = !!(song && song._missing);
+      document.getElementById('ctx-cache').style.display = isMissing ? 'none' : '';
       document.getElementById('ctx-cache').textContent = isCached ? '✓ Cached (remove)' : '↓ Cache for Offline';
-      document.getElementById('ctx-uncache').style.display = isCached ? '' : 'none';
+      document.getElementById('ctx-cache-view').style.display = isMissing ? 'none' : '';
+      document.getElementById('ctx-uncache').style.display = (isCached && !isMissing) ? '' : 'none';
       document.getElementById('ctx-star').textContent = starred ? '♥ Unlove' : '♡ Love';
       const inLibrary = inLib(id);
       document.getElementById('ctx-lib-add').style.display = inLibrary ? 'none' : '';
@@ -4761,6 +6377,76 @@ function setMS(song) {
     document.getElementById('ctx-goto-album').addEventListener('click',  () => { if (ctxId) { const s = songs.find(x => x.id === ctxId); if (s) goToAlbum(s.album, s.artist); } hideCtx(); });
     document.addEventListener('click', hideCtx);
 
+    // ── GROUP CONTEXT MENU (album tile / artist row long-press) ──────────────────
+    let grpCtxSongs = [];
+    function showGroupCtx(x, y, songs, label) {
+      grpCtxSongs = songs;
+      const menu = document.getElementById('mob-group-ctx');
+      document.getElementById('grp-ctx-label').textContent = label;
+      // Cache All / Remove from Cache
+      const allCached = songs.every(s => cachedIds.has(s.id));
+      document.getElementById('grp-ctx-cache').style.display = allCached ? 'none' : '';
+      document.getElementById('grp-ctx-uncache').style.display = allCached ? '' : 'none';
+      // Playlists sub-menu
+      const pi = document.getElementById('grp-ctx-pls');
+      pi.innerHTML = pls.map(pl => `<div class="ci" data-plid="${pl.id}">Add to "${esc(pl.name)}"</div>`).join('');
+      pi.querySelectorAll('.ci').forEach(el => el.addEventListener('click', () => {
+        const plId = el.dataset.plid;
+        grpCtxSongs.forEach(s => addToPl(plId, s.id));
+        toast(`Added ${grpCtxSongs.length} songs to playlist`);
+        hideGroupCtx();
+      }));
+      // Remove from Library — shown when any song in the group is in the user's library (incl. missing ghosts)
+      const anyInLib = songs.some(s => s._missing || userLib[String(s.id)]);
+      document.getElementById('grp-ctx-lib-sep').style.display    = anyInLib ? '' : 'none';
+      document.getElementById('grp-ctx-lib-remove').style.display = anyInLib ? '' : 'none';
+      menu.style.display = 'block';
+      const mw = menu.offsetWidth || 200, mh = 220;
+      menu.style.left = Math.min(x, window.innerWidth - mw - 8) + 'px';
+      menu.style.top  = Math.min(y, window.innerHeight - mh - 8) + 'px';
+    }
+    function hideGroupCtx() { document.getElementById('mob-group-ctx').style.display = 'none'; }
+    document.getElementById('grp-ctx-play').addEventListener('click', () => {
+      if (!grpCtxSongs.length) return;
+      freezeQueue(null);
+      queue.length = 0; queue.push(...grpCtxSongs.map(s => s.id));
+      qi = 0; playSong(queue[0], true, true);
+      hideGroupCtx();
+    });
+    document.getElementById('grp-ctx-next').addEventListener('click', () => {
+      if (!grpCtxSongs.length) return;
+      if (!queue.length) freezeQueue(null);
+      queue.splice(qi + 1, 0, ...grpCtxSongs.map(s => s.id));
+      updCounts(); toast(`${grpCtxSongs.length} songs queued next`);
+      hideGroupCtx();
+    });
+    document.getElementById('grp-ctx-cache').addEventListener('click', () => {
+      const toCache = grpCtxSongs.filter(s => !cachedIds.has(s.id));
+      toCache.forEach(s => cacheSong(s.id));
+      toast(`Caching ${toCache.length} songs…`);
+      hideGroupCtx();
+    });
+    document.getElementById('grp-ctx-uncache').addEventListener('click', () => {
+      grpCtxSongs.forEach(s => uncache(s.id));
+      toast(`Removed ${grpCtxSongs.length} songs from cache`);
+      hideGroupCtx();
+    });
+    document.getElementById('grp-ctx-lib-remove').addEventListener('click', async () => {
+      const toRemove = grpCtxSongs.filter(s => s._missing || userLib[String(s.id)]);
+      if (!toRemove.length) { hideGroupCtx(); return; }
+      if (!confirm(`Remove ${toRemove.length} song${toRemove.length !== 1 ? 's' : ''} from your library?`)) { hideGroupCtx(); return; }
+      toRemove.forEach(s => { delete userLib[String(s.id)]; });
+      await pushUserLib();
+      renderList(); renderSB(); updCounts();
+      clearSelection();
+      hideGroupCtx();
+      toast(`Removed ${toRemove.length} song${toRemove.length !== 1 ? 's' : ''} from library`);
+    });
+    document.addEventListener('click', e => {
+      const menu = document.getElementById('mob-group-ctx');
+      if (menu.style.display !== 'none' && !menu.contains(e.target)) hideGroupCtx();
+    });
+
     // ── PLAYLIST CONTEXT MENU ────────────────────────────────────────────────────
     let plCtxId = null;
     function showPlCtx(x, y, plId) {
@@ -4793,6 +6479,9 @@ function setMS(song) {
     function goToArtist(artist) {
       if (!artist) return;
       // Switch to Songs view, set search to artist name
+      mobileAlbumDrilldown = null;
+      mobileArtistDrilldown = null;
+      mobileNavMode = false;
       view = 'all';
       document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === 'all'));
       sq = artist;
@@ -4804,6 +6493,7 @@ function setMS(song) {
     function goToAlbum(album, artist) {
       if (!album) return;
       // Switch to Songs view, filter by album (use "Album - Artist" to be specific if needed)
+      mobileAlbumDrilldown = null;
       view = 'all';
       document.querySelectorAll('.ni').forEach(el => el.classList.toggle('active', el.dataset.view === 'all'));
       sq = album;
@@ -4876,7 +6566,8 @@ function setMS(song) {
 
     document.getElementById('prog').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
-      if (aud.duration) aud.currentTime = ((e.clientX - r.left) / r.width) * aud.duration;
+      const pct = (e.clientX - r.left) / r.width;
+      if (aud.duration) aud.currentTime = pct * aud.duration;
     });
     document.getElementById('vt').addEventListener('click', e => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -4891,8 +6582,8 @@ function setMS(song) {
       if (e.code === 'Space') { e.preventDefault(); document.getElementById('pbtn').click(); }
       if (e.code === 'ArrowRight' && e.metaKey) playNext(true);
       if (e.code === 'ArrowLeft' && e.metaKey) playPrev(true);
-      if (e.code === 'ArrowRight') aud.currentTime = Math.min(aud.duration || 0, aud.currentTime + 5);
-      if (e.code === 'ArrowLeft') aud.currentTime = Math.max(0, aud.currentTime - 5);
+      if (e.code === 'ArrowRight') { aud.currentTime = Math.min(aud.duration || 0, aud.currentTime + 5); }
+      if (e.code === 'ArrowLeft') { aud.currentTime = Math.max(0, aud.currentTime - 5); }
       if (e.key === 'Escape') { closeNPPanel(); }
     });
 
@@ -4913,8 +6604,9 @@ function setMS(song) {
     document.getElementById('mob-search-trigger').addEventListener('click', e => {
       e.stopPropagation();
       if (window.innerWidth <= 700) {
-        // On mobile: open catalog search (at bottom) which is the unified search
-        openCatalog();
+        // Mobile: open universal search (catalog overlay). openCatalog calls focus()
+        // synchronously within the gesture so iOS Safari raises the keyboard immediately.
+        openCatalog(sq);
       } else {
         openMobSearch();
       }
@@ -4968,6 +6660,10 @@ function setMS(song) {
     // cache-view-btn removed — now in context menu as ctx-cache-view
     document.getElementById('new-pl').addEventListener('click', () => openModal('New Playlist', 'My Playlist', createPl));
     document.getElementById('syncbtn').addEventListener('click', syncLib);
+    // Tapping the sync-status pill opens the catalog (mobile: home screen; desktop: anywhere)
+    document.getElementById('sync-status').addEventListener('click', () => {
+      openCatalog();
+    });
 
     // ── MODAL ─────────────────────────────────────────────────────────────────────
     let mcb = null;
@@ -4980,24 +6676,13 @@ function setMS(song) {
     document.getElementById('mok').addEventListener('click', () => { const v = document.getElementById('mi').value.trim(); if (v && mcb) mcb(v); document.getElementById('mo').classList.remove('show'); });
     document.getElementById('mi').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('mok').click(); if (e.key === 'Escape') document.getElementById('mcancel').click(); });
 
-    // ── GAPLESS / ALBUM STREAM TOGGLE ────────────────────────────────────────────
-    function setGapless(val) {
-      gaplessMode = val;
-      localStorage.setItem('jb-gapless', val ? '1' : '0');
-      const badge = document.getElementById('np-badge');
-      const mobBadge = document.getElementById('mob-np-badge');
-      const chk = document.getElementById('cfg-gapless');
-      if (chk) chk.checked = val;
-      toast(gaplessMode ? 'Gapless playback ON' : 'Gapless playback OFF');
-      [badge, mobBadge].forEach(b => { if (b) b.title = gaplessMode ? 'Gapless ON' : 'Gapless OFF'; });
-    }
-    gaplessMode = localStorage.getItem('jb-gapless') === '1';
-    document.getElementById('cfg-gapless').addEventListener('change', e => setGapless(e.target.checked));
-    document.getElementById('np-badge').addEventListener('click', () => setGapless(!gaplessMode));
-    document.getElementById('mob-np-badge').addEventListener('click', e => { e.stopPropagation(); setGapless(!gaplessMode); });
+    // ── INBOX BUTTON ──────────────────────────────────────────────────────────────
+    document.getElementById('inbox-btn').addEventListener('click', openInbox);
+    document.getElementById('inbox-close').addEventListener('click', closeInbox);
 
     // ── SETTINGS ──────────────────────────────────────────────────────────────────
-    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('cfg-gapless').checked = gaplessMode; document.getElementById('sp').classList.add('show'); }
+    document.getElementById('cfg-theme').addEventListener('change', e => applyTheme(e.target.checked ? 'dark' : 'light'));
+    function showSet() { document.getElementById('cfg-url').value = cfg.url || ''; document.getElementById('cfg-key').value = cfg.apiKey || ''; document.getElementById('cfg-theme').checked = theme === 'dark'; document.getElementById('sp').classList.add('show'); }
     document.getElementById('setbtn').addEventListener('click', showSet);
     document.getElementById('empty-set').addEventListener('click', showSet);
     document.getElementById('sclose').addEventListener('click', () => document.getElementById('sp').classList.remove('show'));
@@ -5005,6 +6690,7 @@ function setMS(song) {
       cfg.url = (document.getElementById('cfg-url').value.trim() || '').replace(/\/$/, '');
       cfg.apiKey = document.getElementById('cfg-key').value.trim();
       scfg(cfg); document.getElementById('sp').classList.remove('show'); syncLib();
+      swSyncData(); // push updated config to SW
     });
 
     // ── TOAST ─────────────────────────────────────────────────────────────────────
@@ -5032,6 +6718,98 @@ function setMS(song) {
     document.getElementById('np-star').addEventListener('click', () => { const cs = curSong(); if (cs) toggleStar(cs.id); });
     document.getElementById('np-show-in-songs').addEventListener('click', () => { closeNPPanel(); showInLibrary(); });
 
+    // ── MOBILE BROWSER HISTORY ────────────────────────────────────────────────────
+    // Push state for mobile navigation so swipe-back (iOS Safari edge swipe) works.
+    function pushMobileHistory() {
+      if (window.innerWidth > 700) return;
+      const lw = document.getElementById('lw');
+      history.pushState({
+        view,
+        mobileNavMode,
+        mobileAlbumDrilldown: mobileAlbumDrilldown ? JSON.parse(JSON.stringify(mobileAlbumDrilldown)) : null,
+        mobileArtistDrilldown: mobileArtistDrilldown ? JSON.parse(JSON.stringify(mobileArtistDrilldown)) : null,
+        scrollTop: lw ? lw.scrollTop : 0,
+      }, '');
+    }
+    window.addEventListener('popstate', e => {
+      if (window.innerWidth > 700 || !e.state) return;
+      view = e.state.view || 'all';
+      mobileNavMode = !!e.state.mobileNavMode;
+      mobileAlbumDrilldown = e.state.mobileAlbumDrilldown || null;
+      mobileArtistDrilldown = e.state.mobileArtistDrilldown || null;
+      renderList(); renderSB();
+      // Restore scroll position after render
+      const savedScroll = e.state.scrollTop || 0;
+      if (savedScroll > 0) {
+        const lw = document.getElementById('lw');
+        // Double rAF: iOS Safari needs two frames after DOM changes before scrollTop takes effect
+        if (lw) requestAnimationFrame(() => requestAnimationFrame(() => { lw.scrollTop = savedScroll; }));
+      }
+    });
+
+    // ── SERVICE WORKER ────────────────────────────────────────────────────────────
+    // Push current config + search misses into the SW's IDB so it can run
+    // background checks even when the app tab is closed.
+    function swSyncData() {
+      if (!navigator.serviceWorker?.controller) return;
+      navigator.serviceWorker.controller.postMessage({
+        type: 'sync-data',
+        cfg:    { url: cfg.url || '', apiKey: cfg.apiKey || '' },
+        misses: getSearchMisses(),
+      });
+    }
+
+    async function registerSW() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js');
+
+        // Once the SW is controlling the page, push an initial data sync
+        navigator.serviceWorker.ready.then(() => {
+          swSyncData();
+          // Ask SW to check now if it hasn't checked in the last 24h
+          navigator.serviceWorker.controller?.postMessage({ type: 'check-now' });
+        });
+
+        // Register Periodic Background Sync (Chrome/Android only, fails silently elsewhere)
+        if ('periodicSync' in reg) {
+          try {
+            const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+            if (status.state === 'granted') {
+              await reg.periodicSync.register('check-search-misses', {
+                minInterval: 24 * 60 * 60 * 1000,
+              });
+            }
+          } catch { /* periodicSync unavailable on this browser */ }
+        }
+      } catch (e) {
+        console.warn('[SW] Registration failed:', e);
+      }
+
+      // Handle messages from the SW
+      navigator.serviceWorker.addEventListener('message', e => {
+        if (!e.data) return;
+        if (e.data.type === 'open-catalog') {
+          // Notification tapped — open catalog with the resolved query
+          openCatalog(e.data.query);
+        } else if (e.data.type === 'misses-updated') {
+          // SW resolved some misses — add them as inbox notifications
+          try { localStorage.setItem('jb-search-misses', JSON.stringify(e.data.misses)); } catch { }
+          checkForNewContent();
+        }
+      });
+    }
+    registerSW();
+
+    // Handle ?catalog= URL param set by SW when opening a fresh tab from a notification
+    (function handleCatalogParam() {
+      const q = new URLSearchParams(location.search).get('catalog');
+      if (q) {
+        // Wait for init to finish before opening (songs need to be loaded)
+        window.addEventListener('jb-ready', () => openCatalog(q), { once: true });
+      }
+    })();
+
     // ── INIT ──────────────────────────────────────────────────────────────────────
     async function init() {
       console.log('[Init] Starting…');
@@ -5043,18 +6821,24 @@ function setMS(song) {
       try { const l = localStorage.getItem('jb-userlib'); if (l) { userLib = JSON.parse(l); } } catch { }
       await pullPlaylists();
       rebuildQ(); renderList(); renderSB();
+      // Set initial history state for mobile so swipe-back has a state to restore
+      if (window.innerWidth <= 700) {
+        history.replaceState({ view, mobileNavMode: true, mobileAlbumDrilldown: null, mobileArtistDrilldown: null }, '');
+      }
       document.getElementById('vf').style.width = (aud.volume * 100) + '%';
       document.getElementById('np-panel-vf').style.width = (aud.volume * 100) + '%';
       if (cfg.url && cfg.apiKey && navigator.onLine) {
         setSt('loading', 'Connecting…');
-        console.log(`[Init] Online — starting sync to ${cfg.url}`);
-        syncLib();
+        console.log(`[Init] Online — checking for changes at ${cfg.url}`);
+        quickCheckLib();
       } else if (!cfg.url) {
         setSt('err', 'Not configured');
         console.log('[Init] No NAS URL configured — open Settings to set up');
       } else {
         console.log('[Init] Offline — using cached data only');
       }
+      updateInboxBadge();
+      window.dispatchEvent(new Event('jb-ready'));
     }
     init();
   </script>
