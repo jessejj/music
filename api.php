@@ -9,8 +9,11 @@
 define('MUSIC_DIR',   '/volume1/music');
 define('API_KEYS',    [
     '81fec16a75cfe311dbbb1266eaad74fbe50abab70975741c8f5c0f40cb44256e',  // user 1
-    'd921474d3fb0e3bbd9877e071172d2fe92d10ad91a30490f7ad802ff18fe372c'   // user 2
+    'd921474d3fb0e3bbd9877e071172d2fe92d10ad91a30490f7ad802ff18fe372c',   // user 2
+    'a48044e99683cf2c12d3d2b5a34170e9294e8cc8b0addf0348275ece0d9d6288',//jska
+    '69584b6e2abaae294e2da00568edebfe9d03a12331a87aebb97b7290e21deb5c'//jesse
 ]);
+define('AUTH_DB_PATH', '/volume3/web/jjjp.ca/src/posts.db');
 define('CACHE_FILE',       __DIR__ . '/.library-cache.json');
 define('FINGERPRINT_FILE', __DIR__ . '/.library-fingerprint');
 define('SONG_CACHE_FILE',  __DIR__ . '/.song-meta-cache.json');
@@ -64,7 +67,14 @@ if ($action !== 'stream' && $action !== 'art' && $action !== 'album_stream' && $
     $key = '';
     if (isset($_SERVER['HTTP_X_API_KEY'])) $key = $_SERVER['HTTP_X_API_KEY'];
     elseif (isset($_GET['key']))           $key = $_GET['key'];
-    if (!in_array($key, API_KEYS, true)) {
+    // if (!in_array($key, API_KEYS, true)) {
+    //     http_response_code(401);
+    //     header('Content-Type: application/json');
+    //     echo json_encode(['error' => 'Unauthorized']);
+    //     exit;
+    // }
+    $authUserId = validateAppToken($key);
+    if ($authUserId === null && !in_array($key, API_KEYS, true)) {
         http_response_code(401);
         header('Content-Type: application/json');
         echo json_encode(['error' => 'Unauthorized']);
@@ -74,6 +84,30 @@ if ($action !== 'stream' && $action !== 'art' && $action !== 'album_stream' && $
 }
 // Returns a per-user file path by hashing the API key.
 // Shared files (library cache, art) are not prefixed.
+
+/**
+ * Validate a token against the APP_TOKENS table.
+ * Returns the USER_ID if valid, null otherwise.
+ */
+function validateAppToken(string $token): ?int {
+    if (empty($token)) return null;
+    
+    try {
+        $db = new SQLite3(AUTH_DB_PATH);
+        $stmt = $db->prepare(
+            "SELECT USER_ID FROM APP_TOKENS WHERE APP = 'music' AND TOKEN = :token"
+        );
+        $stmt->bindValue(':token', $token, SQLITE3_TEXT);
+        $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+        $db->close();
+        return $row ? (int) $row['USER_ID'] : null;
+    } catch (Exception $e) {
+        if (DEBUG) error_log('APP_TOKENS lookup failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
+
 function userFile(string $name): string {
     global $userKey;
     $slug = substr(hash('crc32b', $userKey ?? 'shared'), 0, 8);
@@ -103,6 +137,7 @@ elseif  ($action === 'nowplaying_set')  handleNowPlayingSet();
 elseif  ($action === 'albumart')        handleAlbumArt();
 elseif  ($action === 'hls_generate')    handleHlsGenerate();
 elseif  ($action === 'hls_serve')       handleHlsServe();
+elseif  ($action === 'whoami')          handleWhoAmI();
 else {
     http_response_code(400);
     header('Content-Type: application/json');
@@ -217,6 +252,49 @@ function handleDiag() {
     }
     echo json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 }
+
+
+function handleWhoAmI(): void {
+    global $userKey;
+    
+    $userId = validateAppToken($userKey);
+    
+    if ($userId !== null) {
+        // Look up the user's display info from USERS table
+        try {
+            $db = new SQLite3(AUTH_DB_PATH);
+            $stmt = $db->prepare(
+                "SELECT ID, NAME, GIVENNAME, PICTURE FROM USERS WHERE ID = :id"
+            );
+            $stmt->bindValue(':id', $userId, SQLITE3_INTEGER);
+            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+            $db->close();
+            
+            header('Content-Type: application/json');
+            echo json_encode([
+                'authenticated' => true,
+                'user_id'       => $userId,
+                'name'          => $row['NAME'] ?? 'User',
+                'given_name'    => $row['GIVENNAME'] ?? null,
+                'picture'       => $row['PICTURE'] ?? null,
+            ]);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['authenticated' => true, 'user_id' => $userId]);
+        }
+    } else {
+        // Legacy key — no user profile available
+        header('Content-Type: application/json');
+        echo json_encode([
+            'authenticated' => true,
+            'user_id'       => null,
+            'name'          => 'Legacy API User',
+        ]);
+    }
+    exit;
+}
+
+
 // ─── SONG META ────────────────────────────────────────────────────────────────
 function readMeta() {
     if (!file_exists(userFile('meta'))) return [];
@@ -501,8 +579,11 @@ function handleAlbumStream() {
         $fullPaths[] = $full;
     }
 
-    $ffmpeg = findFfmpeg();
-    if (!$ffmpeg) { http_response_code(500); echo 'ffmpeg not available'; exit; }
+    //$ffmpeg = findFfmpeg();
+    //if (!$ffmpeg) { http_response_code(500); echo 'ffmpeg not available'; exit; }
+
+    $ffmpeg = '/volume1/music/ffmpeg/ffmpeg';
+    if (!@is_executable($ffmpeg)) { http_response_code(500); echo 'ffmpeg not available'; exit; }
 
     $format = isset($_GET['format']) ? strtolower($_GET['format']) : 'aac';
     if (!in_array($format, ['aac','opus','mp3'])) $format = 'aac';
