@@ -6134,7 +6134,8 @@ function setMS(song) {
     let lastClickIdx = -1;        // index in current view of last clicked row (shift-anchor)
 
     function getSelSongs() {
-      return [...selectedIds].map(id => songs.find(s => s.id === id)).filter(Boolean);
+      const lib = libSongs();
+      return [...selectedIds].map(id => lib.find(s => s.id === id)).filter(Boolean);
     }
     function clearSelection() {
       selectedIds.clear(); lastClickIdx = -1; updateSelectionUI();
@@ -6195,9 +6196,12 @@ function setMS(song) {
       const menu = document.getElementById('ctx'), pi = document.getElementById('ctx-pls'), ps = document.getElementById('ctx-pls-sep');
       const isCached = cachedIds.has(id), starred = isStarred(id);
       const m = getMeta(id);
-      const song = songs.find(s => s.id === id);
+      const song = libSongs().find(s => s.id === id);
+      const isMissing = !!(song && song._missing);
+      document.getElementById('ctx-cache').style.display = isMissing ? 'none' : '';
       document.getElementById('ctx-cache').textContent = isCached ? '✓ Cached (remove)' : '↓ Cache for Offline';
-      document.getElementById('ctx-uncache').style.display = isCached ? '' : 'none';
+      document.getElementById('ctx-cache-view').style.display = isMissing ? 'none' : '';
+      document.getElementById('ctx-uncache').style.display = (isCached && !isMissing) ? '' : 'none';
       document.getElementById('ctx-star').textContent = starred ? '♥ Unlove' : '♡ Love';
       const inLibrary = inLib(id);
       document.getElementById('ctx-lib-add').style.display = inLibrary ? 'none' : '';
