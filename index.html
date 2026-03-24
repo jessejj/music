@@ -3185,6 +3185,25 @@
       }
     }
     function setSt(cls, txt) { const el = document.getElementById('sync-status'); el.className = cls; el.textContent = txt; }
+    // Fast pre-flight check: pure filesystem walk on server (no ffprobe). If files changed,
+    // the server invalidates its cache and we fall through to a full syncLib().
+    async function quickCheckLib() {
+      if (!cfg.url || !cfg.apiKey) { showSet(); return; }
+      try {
+        setSt('loading', 'Checking…');
+        const d = await afetch('library_check', {});
+        if (d.changed) {
+          console.log(`[QuickCheck] Library changed (${d.cached}→${d.found} files) — syncing`);
+          await syncLib();
+        } else {
+          console.log(`[QuickCheck] No changes (${d.found} files) — loading from cache`);
+          await syncLib(); // cache still valid; returns instantly via ETag/cache
+        }
+      } catch (e) {
+        console.warn('[QuickCheck] Failed, falling back to full sync:', e.message);
+        await syncLib();
+      }
+    }
 
     // ── SONG META (stars, flags, play history) ────────────────────────────────────
     async function pullMeta() {
@@ -6683,8 +6702,8 @@ function setMS(song) {
       document.getElementById('np-panel-vf').style.width = (aud.volume * 100) + '%';
       if (cfg.url && cfg.apiKey && navigator.onLine) {
         setSt('loading', 'Connecting…');
-        console.log(`[Init] Online — starting sync to ${cfg.url}`);
-        syncLib();
+        console.log(`[Init] Online — checking for changes at ${cfg.url}`);
+        quickCheckLib();
       } else if (!cfg.url) {
         setSt('err', 'Not configured');
         console.log('[Init] No NAS URL configured — open Settings to set up');
