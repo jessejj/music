@@ -11,8 +11,9 @@ define('API_KEYS',    [
     '81fec16a75cfe311dbbb1266eaad74fbe50abab70975741c8f5c0f40cb44256e',  // user 1
     'd921474d3fb0e3bbd9877e071172d2fe92d10ad91a30490f7ad802ff18fe372c'   // user 2
 ]);
-define('CACHE_FILE',  __DIR__ . '/.library-cache.json');
-define('CACHE_TTL',   86400); // 24 hours
+define('CACHE_FILE',       __DIR__ . '/.library-cache.json');
+define('FINGERPRINT_FILE', __DIR__ . '/.library-fingerprint');
+define('CACHE_TTL',        86400); // 24 hours
 define('DEBUG',       false);
 define('ART_CACHE_DIR', __DIR__ . '/artcache');
 define('HLS_DIR',       __DIR__ . '/hls_sessions');
@@ -78,6 +79,7 @@ function userFile(string $name): string {
     return __DIR__ . '/.' . $name . '-' . $slug . '.json';
 }
 if      ($action === 'library')         handleLibrary();
+elseif  ($action === 'library_check')  handleLibraryCheck();
 elseif  ($action === 'sign')            handleSign();
 elseif  ($action === 'sign_album')      handleSignAlbum();
 elseif  ($action === 'stream')          handleStream();
@@ -986,6 +988,52 @@ function hlsCleanupDir($dir) {
 }
 
 // ─── LIBRARY — serve cache (TTL 24h), rebuild on expiry ──────────────────────
+// Fast filesystem walk — no ffprobe, just path:size:mtime strings.
+function quickScanDir($dir, $base = '') {
+    $exts  = ['mp3','m4a','aac','flac','ogg','wav','opus','aiff','wma'];
+    $items = @scandir($dir);
+    if (!$items) return [];
+    $out = [];
+    foreach ($items as $item) {
+        if ($item[0] === '.') continue;
+        $full = $dir . '/' . $item;
+        $rel  = $base ? $base . '/' . $item : $item;
+        if (is_dir($full)) {
+            $out = array_merge($out, quickScanDir($full, $rel));
+            continue;
+        }
+        if (!in_array(strtolower(pathinfo($item, PATHINFO_EXTENSION)), $exts)) continue;
+        $out[] = $rel . ':' . (int)@filesize($full) . ':' . (int)@filemtime($full);
+    }
+    return $out;
+}
+function computeFingerprint($dir) {
+    $files = quickScanDir($dir);
+    sort($files);
+    return ['hash' => md5(implode("\n", $files)), 'count' => count($files)];
+}
+function handleLibraryCheck() {
+    header('Content-Type: application/json; charset=utf-8');
+    if (!is_dir(MUSIC_DIR)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'MUSIC_DIR not found']);
+        return;
+    }
+    $current   = computeFingerprint(MUSIC_DIR);
+    $stored    = file_exists(FINGERPRINT_FILE) ? trim(file_get_contents(FINGERPRINT_FILE)) : '';
+    $cachedCt  = 0;
+    if (file_exists(CACHE_FILE)) {
+        $c = @json_decode(file_get_contents(CACHE_FILE), true);
+        $cachedCt = isset($c['count']) ? (int)$c['count'] : 0;
+    }
+    if ($stored === $current['hash']) {
+        echo json_encode(['changed' => false, 'found' => $current['count']]);
+    } else {
+        // Invalidate cache so next ?action=library does a fresh ffprobe scan
+        @unlink(CACHE_FILE);
+        echo json_encode(['changed' => true, 'found' => $current['count'], 'cached' => $cachedCt]);
+    }
+}
 function handleLibrary() {
     header('Content-Type: application/json; charset=utf-8');
     if (file_exists(CACHE_FILE) && (time() - filemtime(CACHE_FILE)) < CACHE_TTL) {
@@ -1016,6 +1064,9 @@ function handleLibrary() {
         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
     );
     @file_put_contents(CACHE_FILE, $json);
+    // Write fingerprint so library_check can compare without parsing the full cache
+    $fp = computeFingerprint(MUSIC_DIR);
+    @file_put_contents(FINGERPRINT_FILE, $fp['hash']);
     header('ETag: "' . md5($json) . '"');
     echo $json;
 }
